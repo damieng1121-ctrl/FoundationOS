@@ -3,6 +3,12 @@
 The installable, everyday Foundation OS: the Foundation desktop and tools on top of the Linux kernel
 (Ubuntu 24.04 LTS base, so you get its hardware support, drivers and security updates).
 
+| Live session | Installer | Installed: login |
+|---|---|---|
+| ![](docs/live-desktop.png) | ![](docs/installer-summary.png) | ![](docs/login.png) |
+| **First run** | **Foundation Store** | **Windows app installed with fpkg** |
+| ![](docs/welcome-installed.png) | ![](docs/store.png) | ![](docs/windows-app.png) |
+
 ## Get the ISO
 
 GitHub builds the ISO automatically:
@@ -106,6 +112,21 @@ sudo ./build-iso.sh iso          # repack only
 | `overlay/usr/share/foundation/catalog.yaml` | Store catalog |
 | `overlay/usr/bin/foundation-*` | Launcher, Store, Settings, Welcome, App Installer, session |
 | `tools/make-assets.py` | Regenerates logo, icons and wallpaper |
+
+## Tested
+
+Each release is install-tested in QEMU: boot ISO → live desktop → Calamares install (BIOS, erase disk,
+ext4) → reboot from disk → graphical login → Foundation Store install (VLC) with polkit authentication →
+Windows `.exe` installed via `fpkg` into a Wine bottle and listed in the start menu.
+
+## Known issues (v0.2)
+
+- Not Secure Boot signed yet: disable Secure Boot (Hyper-V Gen 2, most PCs).
+- On BIOS installs the `grub-pc` package is not added, so GRUB itself isn't upgraded by package updates
+  (kernel updates still regenerate the boot menu).
+- In QEMU without KVM, use a named CPU model (e.g. `-cpu Nehalem`), not `-cpu max`: Wine crashes on
+  the emulated experimental CPU features.
+- Google Chrome/Edge/Flathub installs need internet access to those vendors' servers.
 
 ## Roadmap
 
