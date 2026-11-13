@@ -1,5 +1,10 @@
 #!/bin/sh
 # Start the Foundation desktop (labwc compositor + Foundation shell components).
+#
+# Virtual and older GPUs often expose a DRM device without working 3D acceleration, which makes
+# the compositor fail to create its renderer and the session end immediately (you land back on
+# the login screen). So: use software rendering in virtual machines, and if the compositor still
+# dies right after starting, retry with software rendering instead of giving up.
 export XDG_CURRENT_DESKTOP=Foundation:wlroots
 export XDG_SESSION_DESKTOP=foundation
 export XDG_SESSION_TYPE=wayland
@@ -9,16 +14,44 @@ export GDK_BACKEND="wayland,x11"
 export SDL_VIDEODRIVER="wayland,x11"
 export _JAVA_AWT_WM_NONREPARENTING=1
 export WLR_RENDERER_ALLOW_SOFTWARE=1
-# Virtual machines often have no 3D acceleration and broken hardware cursors.
-if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+
+LOG="${XDG_CACHE_HOME:-$HOME/.cache}/foundation-session.log"
+mkdir -p "$(dirname "$LOG")"
+: > "$LOG"
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG"; }
+
+virt="$(systemd-detect-virt 2>/dev/null || echo none)"
+log "Foundation session starting (virt=$virt)"
+ls -l /dev/dri >> "$LOG" 2>&1
+
+if [ "$virt" != "none" ]; then
+  # VirtualBox, VMware, Hyper-V, QEMU/KVM...: reliable software rendering, no hardware cursor.
+  export WLR_RENDERER=pixman
+  export WLR_NO_HARDWARE_CURSORS=1
+elif ! ls /dev/dri/renderD* >/dev/null 2>&1; then
   export WLR_RENDERER=pixman
 fi
-if [ "$(systemd-detect-virt 2>/dev/null || echo none)" != "none" ]; then
-  export WLR_NO_HARDWARE_CURSORS=1
-fi
+
 # labwc 0.7 only reads menu.xml from its active config directory, so point it at
 # Foundation's system config unless the user has made their own.
-if [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/labwc" ]; then
-  exec labwc
+set -- labwc
+if [ ! -d "${XDG_CONFIG_HOME:-$HOME/.config}/labwc" ]; then
+  set -- labwc -C /etc/xdg/labwc
 fi
-exec labwc -C /etc/xdg/labwc
+
+start=$(date +%s)
+log "starting: $* (WLR_RENDERER=${WLR_RENDERER:-auto})"
+"$@" >> "$LOG" 2>&1
+rc=$?
+log "labwc exited with code $rc after $(( $(date +%s) - start ))s"
+
+# Crashed straight away? Retry once with software rendering and no hardware cursor.
+if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - start )) -lt 15 ] && [ "${WLR_RENDERER:-}" != "pixman" ]; then
+  export WLR_RENDERER=pixman
+  export WLR_NO_HARDWARE_CURSORS=1
+  log "retrying with software rendering"
+  "$@" >> "$LOG" 2>&1
+  rc=$?
+  log "labwc exited with code $rc"
+fi
+exit $rc
