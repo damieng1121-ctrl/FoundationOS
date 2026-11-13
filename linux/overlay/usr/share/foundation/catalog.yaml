@@ -67,17 +67,17 @@ apps:
     also: [microsoft-word, microsoft-excel, microsoft-powerpoint, microsoft-outlook, microsoft-onenote, microsoft-teams]
 
   - {id: microsoft-word, name: Microsoft Word, category: Office, icon: x-office-document, source: webapp,
-     url: "https://www.microsoft365.com/launch/word", description: Word documents (Microsoft 365).}
+     url: "https://www.microsoft365.com/launch/word", description: "Word documents (Microsoft 365)."}
   - {id: microsoft-excel, name: Microsoft Excel, category: Office, icon: x-office-spreadsheet, source: webapp,
-     url: "https://www.microsoft365.com/launch/excel", description: Excel spreadsheets (Microsoft 365).}
+     url: "https://www.microsoft365.com/launch/excel", description: "Excel spreadsheets (Microsoft 365)."}
   - {id: microsoft-powerpoint, name: Microsoft PowerPoint, category: Office, icon: x-office-presentation, source: webapp,
-     url: "https://www.microsoft365.com/launch/powerpoint", description: PowerPoint presentations (Microsoft 365).}
+     url: "https://www.microsoft365.com/launch/powerpoint", description: "PowerPoint presentations (Microsoft 365)."}
   - {id: microsoft-outlook, name: Microsoft Outlook, category: Office, icon: internet-mail, source: webapp,
-     url: "https://outlook.office.com/mail/", description: Outlook mail and calendar.}
+     url: "https://outlook.office.com/mail/", description: "Outlook mail and calendar."}
   - {id: microsoft-onenote, name: Microsoft OneNote, category: Office, icon: accessories-text-editor, source: webapp,
-     url: "https://www.onenote.com/notebooks", description: OneNote notebooks.}
+     url: "https://www.onenote.com/notebooks", description: "OneNote notebooks."}
   - {id: microsoft-teams, name: Microsoft Teams, category: Communication, icon: teams, source: webapp,
-     url: "https://teams.microsoft.com/", description: Chat, meetings and calls.}
+     url: "https://teams.microsoft.com/", description: "Chat, meetings and calls."}
 
   - id: onlyoffice
     name: ONLYOFFICE Desktop Editors
@@ -106,13 +106,13 @@ apps:
     url: https://drive.google.com/
     also: [google-docs, google-sheets, google-slides]
   - {id: google-docs, name: Google Docs, category: Office, icon: x-office-document, source: webapp,
-     url: "https://docs.google.com/document/", description: Google Docs.}
+     url: "https://docs.google.com/document/", description: "Google Docs."}
   - {id: google-sheets, name: Google Sheets, category: Office, icon: x-office-spreadsheet, source: webapp,
-     url: "https://docs.google.com/spreadsheets/", description: Google Sheets.}
+     url: "https://docs.google.com/spreadsheets/", description: "Google Sheets."}
   - {id: google-slides, name: Google Slides, category: Office, icon: x-office-presentation, source: webapp,
-     url: "https://docs.google.com/presentation/", description: Google Slides.}
+     url: "https://docs.google.com/presentation/", description: "Google Slides."}
   - {id: gmail, name: Gmail, category: Communication, icon: internet-mail, source: webapp,
-     url: "https://mail.google.com/", description: Google mail.}
+     url: "https://mail.google.com/", description: "Google mail."}
 
   - id: google-drive-sync
     name: Google Drive (folder sync)
@@ -153,26 +153,26 @@ apps:
 
   # ---------------------------------------------------------------- Communication
   - {id: zoom, name: Zoom, category: Communication, icon: us.zoom.Zoom, source: flatpak, flatpak: us.zoom.Zoom,
-     description: Video meetings.}
+     description: "Video meetings."}
   - {id: slack, name: Slack, category: Communication, icon: com.slack.Slack, source: flatpak, flatpak: com.slack.Slack,
-     description: Team chat.}
+     description: "Team chat."}
   - {id: discord, name: Discord, category: Communication, icon: com.discordapp.Discord, source: flatpak,
-     flatpak: com.discordapp.Discord, description: Voice, video and text chat.}
+     flatpak: com.discordapp.Discord, description: "Voice, video and text chat."}
   - {id: whatsapp, name: WhatsApp, category: Communication, icon: whatsapp, source: webapp,
-     url: "https://web.whatsapp.com/", description: WhatsApp on your desktop.}
+     url: "https://web.whatsapp.com/", description: "WhatsApp on your desktop."}
   - {id: thunderbird, name: Thunderbird, category: Communication, icon: org.mozilla.Thunderbird, source: flatpak,
-     flatpak: org.mozilla.Thunderbird, description: Email client.}
+     flatpak: org.mozilla.Thunderbird, description: "Email client."}
 
   # ------------------------------------------------------------------ Media
   - {id: spotify, name: Spotify, category: Media, icon: com.spotify.Client, source: flatpak, flatpak: com.spotify.Client,
-     description: Music streaming.}
+     description: "Music streaming."}
   - {id: vlc, name: VLC media player, category: Media, icon: vlc, source: apt, packages: [vlc],
-     description: Plays almost any video or audio file.}
-  - {id: gimp, name: GIMP, category: Media, icon: gimp, source: apt, packages: [gimp], description: Image editor.}
+     description: "Plays almost any video or audio file."}
+  - {id: gimp, name: GIMP, category: Media, icon: gimp, source: apt, packages: [gimp], description: "Image editor."}
   - {id: inkscape, name: Inkscape, category: Media, icon: inkscape, source: apt, packages: [inkscape],
-     description: Vector graphics editor.}
+     description: "Vector graphics editor."}
   - {id: obs-studio, name: OBS Studio, category: Media, icon: com.obsproject.Studio, source: flatpak,
-     flatpak: com.obsproject.Studio, description: Screen recording and streaming.}
+     flatpak: com.obsproject.Studio, description: "Screen recording and streaming."}
 
   # ------------------------------------------------------------- Development
   - id: vscode
@@ -188,7 +188,7 @@ apps:
       list: vscode.list
       line: "deb [arch=amd64 signed-by=@KEYRING@] https://packages.microsoft.com/repos/code stable main"
     packages: [code]
-  - {id: git, name: Git, category: Development, icon: git, source: apt, packages: [git], description: Version control.}
+  - {id: git, name: Git, category: Development, icon: git, source: apt, packages: [git], description: "Version control."}
 
   # ------------------------------------------------------------ Windows apps
   - id: notepad-plus-plus
@@ -213,8 +213,8 @@ apps:
      flatpak: com.valvesoftware.Steam, description: "Games, including many Windows games via Proton."}
 
   # ---------------------------------------------------------------- Utilities
-  - {id: 7zip, name: 7-Zip, category: Utilities, icon: 7zip, source: apt, packages: [7zip], description: File archiver.}
+  - {id: 7zip, name: 7-Zip, category: Utilities, icon: 7zip, source: apt, packages: [7zip], description: "File archiver."}
   - {id: timeshift, name: Timeshift, category: Utilities, icon: timeshift, source: apt, packages: [timeshift],
-     description: System snapshots and restore.}
+     description: "System snapshots and restore."}
   - {id: gparted, name: GParted, category: Utilities, icon: gparted, source: apt, packages: [gparted],
-     description: Disk partition editor.}
+     description: "Disk partition editor."}

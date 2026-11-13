@@ -1,14 +1,17 @@
 #!/bin/sh
-# Run inside the target system by the installer: install the GRUB package that matches the firmware.
-set -e
+# Run inside the target system by the installer: install the GRUB package (and its dependencies)
+# matching the firmware, so kernel updates keep the bootloader up to date.
 export DEBIAN_FRONTEND=noninteractive
-cd /var/cache/foundation/debs 2>/dev/null || exit 0
 if [ -d /sys/firmware/efi ]; then
-  set -- grub-efi-amd64_*.deb grub-efi-amd64-signed_*.deb
+  dir=/var/cache/foundation/debs/efi
 else
+  dir=/var/cache/foundation/debs/bios
   echo "grub-pc grub-pc/install_devices_empty boolean true" | debconf-set-selections
   echo "grub-pc grub-pc/install_devices multiselect" | debconf-set-selections
-  set -- grub-pc_*.deb
 fi
-for f in "$@"; do [ -f "$f" ] && dpkg -i "$f" || true; done
+ls "$dir"/*.deb >/dev/null 2>&1 || exit 0   # nothing needed (e.g. UEFI GRUB already present)
+apt-get install -y --no-download --no-install-recommends "$dir"/*.deb || {
+  echo "warning: could not install bootloader package; repairing package state" >&2
+  apt-get -y -f install --no-download || true
+}
 exit 0

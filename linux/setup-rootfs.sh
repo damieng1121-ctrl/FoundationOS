@@ -11,11 +11,21 @@ apt-get install -y --no-install-recommends \
   qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
   qml-module-qtquick-controls2 qml-module-qtquick-controls qml-module-qtgraphicaleffects \
   libnotify-bin desktop-file-utils shared-mime-info \
-  squashfs-tools xfsprogs gdisk
+  squashfs-tools xfsprogs gdisk \
+  xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev \
+  xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
-mkdir -p /var/cache/foundation/debs
-(cd /var/cache/foundation/debs && apt-get download grub-pc grub-efi-amd64)
+rm -rf /var/cache/foundation/debs
+# Download each complete dependency set (resolved against this system) so it installs offline.
+for fw in bios:grub-pc efi:grub-efi-amd64; do
+  d=/var/cache/foundation/debs/${fw%%:*}
+  mkdir -p "$d/partial"
+  apt-get install -y --download-only --no-install-recommends \
+    -o Dir::Cache::archives="$d" "${fw#*:}"
+  rm -rf "$d/partial" "$d/lock"
+done
+ls -R /var/cache/foundation/debs
 
 # --- Identity
 [ -e /usr/lib/os-release.distrib ] || dpkg-divert --local --rename --add /usr/lib/os-release
@@ -36,6 +46,17 @@ OSR
 ln -sf ../usr/lib/os-release /etc/os-release
 echo "Foundation OS ${VERSION} \\n \\l" > /etc/issue
 echo foundation > /etc/hostname
+# Console login greeting.
+chmod -x /etc/update-motd.d/* 2>/dev/null || true
+cat > /etc/motd <<'MOTD'
+
+  Welcome to Foundation OS ${VERSION}
+
+  Get apps:        fpkg search <name>   /   fpkg install <app | file.exe | file.msi>
+  Install updates: fpkg update
+
+MOTD
+sed -i "s/\${VERSION}/${VERSION}/" /etc/motd
 cat > /etc/hosts <<'HOSTS'
 127.0.0.1 localhost
 127.0.1.1 foundation
