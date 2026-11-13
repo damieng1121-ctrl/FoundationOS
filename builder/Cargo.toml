@@ -1,0 +1,8 @@
+[package]
+name = "foundation-builder"
+version = "0.1.0"
+edition = "2021"
+description = "Wraps the Foundation kernel ELF into bootable BIOS and UEFI disk images."
+
+[dependencies]
+bootloader = "0.11.17"
