@@ -1,0 +1,11 @@
+[Unit]
+Description=Foundation: choose desktop session for this computer's graphics
+After=systemd-udev-trigger.service systemd-modules-load.service
+Before=display-manager.service lightdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/foundation/select-session
+
+[Install]
+WantedBy=graphical.target

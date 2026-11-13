@@ -18,11 +18,9 @@
   <keyboard>
     <default />
     <keybind key="W-Space"><action name="Execute"><command>foundation-launcher</command></action></keybind>
-    <keybind key="Super_L" onRelease="yes"><action name="Execute"><command>foundation-launcher</command></action></keybind>
     <keybind key="W-Return"><action name="Execute"><command>foot</command></action></keybind>
     <keybind key="C-A-t"><action name="Execute"><command>foot</command></action></keybind>
     <keybind key="W-e"><action name="Execute"><command>thunar</command></action></keybind>
-    <keybind key="W-d"><action name="ToggleShowDesktop" /></keybind>
     <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
     <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
     <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>

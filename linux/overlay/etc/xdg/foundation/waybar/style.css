@@ -29,8 +29,8 @@ window#waybar {
 #taskbar button {
   color: #e8ecf5;
   background: #1c2438;
-  margin: 6px 3px;
-  padding: 0 10px;
+  margin: 6px 2px;
+  padding: 0 8px;
   border-radius: 6px;
   border-bottom: 2px solid transparent;
 }

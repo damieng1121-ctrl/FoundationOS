@@ -24,7 +24,7 @@ def main():
         return
     ui.apply_css()
     win = Gtk.Window(title="Welcome to Foundation")
-    win.set_default_size(640, 520)
+    win.set_default_size(*ui.fit_size(640, 520))
     win.set_icon_name("foundation")
     win.connect("destroy", Gtk.main_quit)
     outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)

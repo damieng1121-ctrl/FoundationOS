@@ -18,8 +18,8 @@
     "tooltip": false
   },
   "wlr/taskbar": {
-    "format": "{icon} {title:.22}",
-    "icon-size": 20,
+    "format": "{icon}",
+    "icon-size": 22,
     "on-click": "activate",
     "on-click-middle": "close",
     "tooltip-format": "{title}",
@@ -40,9 +40,9 @@
   },
   "tray": { "spacing": 8, "icon-size": 18 },
   "network": {
-    "format-wifi": "📶 {essid}",
-    "format-ethernet": "🖧 Wired",
-    "format-disconnected": "⚠ Offline",
+    "format-wifi": "📶",
+    "format-ethernet": "🖧",
+    "format-disconnected": "⚠",
     "tooltip-format-wifi": "{essid} ({signalStrength}%) - {ipaddr}",
     "tooltip-format-ethernet": "{ifname} - {ipaddr}",
     "on-click": "nm-connection-editor"
@@ -55,7 +55,7 @@
   },
   "battery": { "format": "🔋 {capacity}%", "format-charging": "⚡ {capacity}%" },
   "clock": {
-    "format": "{:%H:%M  ·  %a %d %b}",
-    "tooltip-format": "<tt>{calendar}</tt>"
+    "format": "{:%H:%M}",
+    "tooltip-format": "{:%A %d %B %Y}\n\n<tt>{calendar}</tt>"
   }
 }

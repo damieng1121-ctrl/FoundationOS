@@ -39,6 +39,23 @@ if [ ! -d "${XDG_CONFIG_HOME:-$HOME/.config}/labwc" ]; then
   set -- labwc -C /etc/xdg/labwc
 fi
 
+# Compatibility session (started by LightDM inside Xorg when there is no kernel graphics device,
+# see foundation-select-session): run the desktop as a full-screen window on the X server.
+if [ "$1" = "--x11" ] || { [ -n "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; }; then
+  log "compatibility mode: running inside Xorg (DISPLAY=$DISPLAY)"
+  # Remember the real X display: inside the session DISPLAY points at labwc's own XWayland.
+  export FOUNDATION_X_DISPLAY="$DISPLAY"
+  export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_X11_OUTPUTS=1 FOUNDATION_COMPAT=1
+  unset WAYLAND_DISPLAY
+  [ "$1" = "--x11" ] && shift
+  labwc_cmd="labwc"
+  [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/labwc" ] || labwc_cmd="labwc -C /etc/xdg/labwc"
+  $labwc_cmd >> "$LOG" 2>&1
+  rc=$?
+  log "labwc exited with code $rc"
+  exit $rc
+fi
+
 start=$(date +%s)
 log "starting: $* (WLR_RENDERER=${WLR_RENDERER:-auto})"
 "$@" >> "$LOG" 2>&1

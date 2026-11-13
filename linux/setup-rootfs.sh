@@ -13,7 +13,8 @@ apt-get install -y --no-install-recommends \
   libnotify-bin desktop-file-utils shared-mime-info \
   squashfs-tools xfsprogs gdisk \
   xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev \
-  xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl
+  xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
+  x11-utils wlr-randr
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
 rm -rf /var/cache/foundation/debs
@@ -80,7 +81,7 @@ update-locale LANG=en_US.UTF-8
 # --- Services
 ln -sf /usr/lib/systemd/system/lightdm.service /etc/systemd/system/display-manager.service
 systemctl set-default graphical.target
-systemctl enable NetworkManager.service foundation-refresh.timer
+systemctl enable NetworkManager.service foundation-refresh.timer foundation-select-session.service
 systemctl disable systemd-networkd.service systemd-networkd-wait-online.service 2>/dev/null || true
 mkdir -p /etc/NetworkManager/conf.d
 printf '[keyfile]\nunmanaged-devices=none\n' > /etc/NetworkManager/conf.d/10-foundation.conf
@@ -92,7 +93,7 @@ APT
 
 # --- Desktop integration
 chmod 0755 /usr/bin/fpkg /usr/bin/foundation-* /usr/lib/foundation/fpkg-helper /usr/lib/foundation/live-status \
-  /usr/lib/foundation/install-bootloader-pkg
+  /usr/lib/foundation/install-bootloader-pkg /usr/lib/foundation/select-session
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 update-desktop-database /usr/share/applications || true
 update-mime-database /usr/share/mime

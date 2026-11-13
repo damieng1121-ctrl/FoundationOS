@@ -25,7 +25,7 @@ Choose **Try or Install Foundation OS**, then click **Install Foundation** on th
 
 | Hypervisor | Notes |
 |---|---|
-| **VirtualBox** | Type *Linux / Ubuntu (64-bit)*. Graphics: VMSVGA. Works with BIOS or EFI. |
+| **VirtualBox** | Type *Linux / Ubuntu (64-bit)*, 128 MB video memory. Graphics controller **VBoxVGA** is the most reliable; VMSVGA also works. Leave *View → Auto-resize Guest Display* on and Foundation follows the window size. |
 | **VMware Workstation/Player/Fusion** | Guest OS *Ubuntu 64-bit*. |
 | **Hyper-V** | Generation 2 VM: **turn off Secure Boot** (Settings → Security) - the v0.2 bootloader is not signed yet. Generation 1 also works. |
 | **QEMU/KVM, virt-manager, GNOME Boxes, UTM (Intel Macs)** | `qemu-system-x86_64 -enable-kvm -m 4G -smp 2 -cdrom foundation-*.iso -drive file=disk.qcow2,if=virtio` |
@@ -120,6 +120,11 @@ ext4) → reboot from disk → graphical login → Foundation Store install (VLC
 Windows `.exe` installed via `fpkg` into a Wine bottle and listed in the start menu.
 
 ## Known issues (v0.2)
+
+- If the graphics card has no Linux kernel driver (or you boot *safe graphics*), Foundation starts in
+  **compatibility graphics** mode: the same desktop running inside a basic Xorg display. It works, but is
+  slower and can't change resolution; pick another VM graphics controller for best results.
+- Session problems are logged to `~/.cache/foundation-session.log`.
 
 - Not Secure Boot signed yet: disable Secure Boot (Hyper-V Gen 2, most PCs).
 - On BIOS installs the `grub-pc` package is not added, so GRUB itself isn't upgraded by package updates

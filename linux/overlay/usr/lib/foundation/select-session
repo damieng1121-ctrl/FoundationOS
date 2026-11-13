@@ -1,0 +1,18 @@
+#!/bin/sh
+# Runs before the login manager: pick the normal (Wayland) Foundation session when the kernel has a
+# graphics driver, or the compatibility (Xorg) session when it doesn't - e.g. unsupported GPUs,
+# some virtual machines, or the "safe graphics" (nomodeset) boot option.
+conf=/etc/lightdm/lightdm.conf.d/60-foundation-graphics.conf
+udevadm settle --timeout=20 2>/dev/null || true
+for _ in $(seq 1 20); do
+  ls /dev/dri/card* >/dev/null 2>&1 && break
+  sleep 0.5
+done
+if ls /dev/dri/card* >/dev/null 2>&1; then
+  rm -f "$conf"
+  echo "graphics driver found: using the Foundation (Wayland) session"
+else
+  mkdir -p "$(dirname "$conf")"
+  printf '[Seat:*]\nuser-session=foundation-compat\nautologin-session=foundation-compat\n' > "$conf"
+  echo "no kernel graphics driver: using Foundation (compatibility graphics)"
+fi

@@ -35,7 +35,7 @@ def main():
     ui.apply_css()
     desc, windows = kind(path)
     win = Gtk.Window(title="Install app")
-    win.set_default_size(520, 260)
+    win.set_default_size(*ui.fit_size(520, 260))
     win.set_icon_name("foundation")
     win.connect("destroy", Gtk.main_quit)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)

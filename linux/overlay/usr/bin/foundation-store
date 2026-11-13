@@ -23,7 +23,7 @@ class Store(Gtk.Window):
     def __init__(self):
         super().__init__(title="Foundation Store")
         ui.apply_css()
-        self.set_default_size(1000, 680)
+        self.set_default_size(*ui.fit_size(1000, 680))
         self.set_icon_name("foundation")
         self.apps = []
         self.category = "All"

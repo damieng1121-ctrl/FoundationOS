@@ -1,4 +1,6 @@
 # Foundation desktop session components (run by labwc at login).
+# Keep the desktop sized to the screen (VM window resizes, monitors, compatibility mode).
+foundation-display-follow >/dev/null 2>&1 &
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE >/dev/null 2>&1
 swaybg -m fill -i "$(foundation-wallpaper)" >/dev/null 2>&1 &
 waybar -c /etc/xdg/foundation/waybar/config.jsonc -s /etc/xdg/foundation/waybar/style.css >/dev/null 2>&1 &

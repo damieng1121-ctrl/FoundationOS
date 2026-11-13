@@ -51,6 +51,17 @@ def css(widget, *classes):
     return widget
 
 
+def fit_size(width, height, margin=60):
+    """Requested window size, shrunk to fit the current screen (small VM windows, netbooks)."""
+    try:
+        disp = Gdk.Display.get_default()
+        mon = disp.get_primary_monitor() or disp.get_monitor(0)
+        geo = mon.get_workarea()
+        return max(320, min(width, geo.width - margin)), max(240, min(height, geo.height - margin))
+    except Exception:  # noqa: BLE001
+        return width, height
+
+
 def is_live():
     try:
         with open("/proc/cmdline") as f:

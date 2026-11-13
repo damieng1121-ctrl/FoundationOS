@@ -29,7 +29,7 @@ class Launcher(Gtk.Application):
         ui.apply_css()
         self.win = w = Gtk.Window(application=self)
         w.set_title("foundation-launcher")
-        w.set_default_size(600, 640)
+        w.set_default_size(*ui.fit_size(600, 640, margin=70))
         GtkLayerShell.init_for_window(w)
         GtkLayerShell.set_layer(w, GtkLayerShell.Layer.OVERLAY)
         GtkLayerShell.set_anchor(w, GtkLayerShell.Edge.BOTTOM, True)
@@ -67,7 +67,7 @@ class Launcher(Gtk.Application):
 
         sw = Gtk.ScrolledWindow()
         sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        sw.set_min_content_height(360)
+        sw.set_min_content_height(min(360, ui.fit_size(600, 640, margin=70)[1] - 280))
         self.flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=5,
                                 min_children_per_line=5, homogeneous=True, row_spacing=4, column_spacing=4)
         self.flow.set_filter_func(self.filter)

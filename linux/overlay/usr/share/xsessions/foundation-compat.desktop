@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Foundation (compatibility graphics)
+Comment=Foundation desktop for computers without a supported graphics driver
+Exec=foundation-session --x11
+Type=Application
+DesktopNames=Foundation;wlroots
