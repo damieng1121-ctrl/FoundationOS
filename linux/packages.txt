@@ -34,6 +34,9 @@ os-prober
 dosfstools
 btrfs-progs
 e2fsprogs
+xfsprogs
+gdisk
+squashfs-tools
 plymouth-theme-spinner
 
 # --- Graphics stack and Foundation desktop

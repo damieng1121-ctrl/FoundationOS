@@ -1,5 +1,6 @@
 * {
-  font-family: "Inter", "Noto Sans", "Noto Color Emoji", sans-serif;
+  font-family: "Inter", "Noto Sans", sans-serif;
+  font-feature-settings: "tnum";
   font-size: 13px;
   min-height: 0;
   border: none;

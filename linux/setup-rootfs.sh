@@ -10,14 +10,15 @@ apt-get install -y --no-install-recommends \
   unattended-upgrades dconf-cli qtwayland5 \
   qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
   qml-module-qtquick-controls2 qml-module-qtquick-controls qml-module-qtgraphicaleffects \
-  libnotify-bin desktop-file-utils shared-mime-info
+  libnotify-bin desktop-file-utils shared-mime-info \
+  squashfs-tools xfsprogs gdisk
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
 mkdir -p /var/cache/foundation/debs
 (cd /var/cache/foundation/debs && apt-get download grub-pc grub-efi-amd64)
 
 # --- Identity
-dpkg-divert --local --rename --add /usr/lib/os-release
+[ -e /usr/lib/os-release.distrib ] || dpkg-divert --local --rename --add /usr/lib/os-release
 cat > /usr/lib/os-release <<OSR
 PRETTY_NAME="Foundation OS ${VERSION}"
 NAME="Foundation OS"
@@ -84,7 +85,9 @@ done
 
 # Boot splash: replace the Ubuntu watermark with the Foundation logo.
 if [ -d /usr/share/plymouth/themes/spinner ]; then
-  cp /usr/share/foundation/logo-white.png /usr/share/plymouth/themes/spinner/watermark.png
+  # Centre logo (shown when the firmware has no BGRT logo, e.g. in VMs) = Foundation; no bottom watermark.
+  cp /usr/share/foundation/logo-white.png /usr/share/plymouth/themes/spinner/bgrt-fallback.png
+  python3 -c "import zlib,struct;raw=b'\\x00\\x00\\x00\\x00\\x00';c=lambda t,d:struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d));open('/usr/share/plymouth/themes/spinner/watermark.png','wb').write(b'\\x89PNG\\r\\n\\x1a\\n'+c(b'IHDR',struct.pack('>IIBBBBB',1,1,8,6,0,0,0))+c(b'IDAT',zlib.compress(raw))+c(b'IEND',b''))"
   cp /usr/share/foundation/logo-white.png /usr/share/plymouth/ubuntu-logo.png 2>/dev/null || true
 fi
 

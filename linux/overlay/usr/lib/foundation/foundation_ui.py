@@ -9,6 +9,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 ACCENT = "#4f8cff"
 CSS = b"""
+window.background { background-color: #121829; color: #e8ecf5; }
 .f-dark { background: #121829; color: #e8ecf5; }
 .f-panel { background: #161d2e; color: #e8ecf5; border-radius: 14px; border: 1px solid #2a3550; }
 .f-header { background: linear-gradient(135deg, #1e3a7a, #4f3f9c); color: white; border-radius: 14px 14px 0 0; padding: 18px; }

@@ -92,7 +92,7 @@ stage_iso() {
   du -sx --block-size=1 "$ROOT" | cut -f1 > "$ISO/casper/filesystem.size"
 
   log "Compressing root filesystem (squashfs/zstd)"
-  mksquashfs "$ROOT" "$ISO/casper/filesystem.squashfs" -noappend -comp zstd -Xcompression-level 15 \
+  mksquashfs "$ROOT" "$ISO/casper/filesystem.squashfs" -noappend -comp zstd -Xcompression-level "${SQUASH_LEVEL:-15}" \
     -e boot/efi -wildcards -e 'proc/*' -e 'sys/*' -e 'dev/*' -e 'run/*' -e 'tmp/*'
 
   echo "Foundation OS $VERSION \"Bedrock\" - amd64 ($(date -u +%Y%m%d))" > "$ISO/.disk/info"
