@@ -1,0 +1,14 @@
+#!/bin/sh
+# Run inside the target system by the installer: install the GRUB package that matches the firmware.
+set -e
+export DEBIAN_FRONTEND=noninteractive
+cd /var/cache/foundation/debs 2>/dev/null || exit 0
+if [ -d /sys/firmware/efi ]; then
+  set -- grub-efi-amd64_*.deb grub-efi-amd64-signed_*.deb
+else
+  echo "grub-pc grub-pc/install_devices_empty boolean true" | debconf-set-selections
+  echo "grub-pc grub-pc/install_devices multiselect" | debconf-set-selections
+  set -- grub-pc_*.deb
+fi
+for f in "$@"; do [ -f "$f" ] && dpkg -i "$f" || true; done
+exit 0

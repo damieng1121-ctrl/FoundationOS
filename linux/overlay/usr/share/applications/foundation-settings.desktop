@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Comment=Foundation settings
+Icon=preferences-system
+Exec=foundation-settings
+Categories=Settings;
+Terminal=false

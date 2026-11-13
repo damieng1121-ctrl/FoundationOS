@@ -1,0 +1,4 @@
+#!/bin/sh
+# Print the wallpaper path (user choice in ~/.config/foundation/wallpaper, else the default).
+f="${XDG_CONFIG_HOME:-$HOME/.config}/foundation/wallpaper"
+if [ -f "$f" ] && [ -f "$(cat "$f")" ]; then cat "$f"; else echo /usr/share/foundation/wallpaper.jpg; fi

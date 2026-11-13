@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>6</gap>
+  </core>
+  <theme>
+    <name>Foundation</name>
+    <cornerRadius>8</cornerRadius>
+    <font place="ActiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
+    <font place="InactiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
+    <font place="MenuItem"><name>Inter</name><size>10</size></font>
+    <font place="OnScreenDisplay"><name>Inter</name><size>10</size></font>
+  </theme>
+  <placement><policy>cascade</policy></placement>
+  <focus><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus></focus>
+  <snapping><range>12</range><topMaximize>yes</topMaximize></snapping>
+  <keyboard>
+    <default />
+    <keybind key="W-Space"><action name="Execute" command="foundation-launcher" /></keybind>
+    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="foundation-launcher" /></keybind>
+    <keybind key="W-Return"><action name="Execute" command="foot" /></keybind>
+    <keybind key="C-A-t"><action name="Execute" command="foot" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="thunar" /></keybind>
+    <keybind key="W-d"><action name="ToggleShowDesktop" /></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="Print"><action name="Execute" command="sh -c 'mkdir -p ~/Pictures/Screenshots &amp;&amp; grim ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png &amp;&amp; notify-send Screenshot saved'" /></keybind>
+    <keybind key="S-Print"><action name="Execute" command="sh -c 'mkdir -p ~/Pictures/Screenshots &amp;&amp; grim -g &quot;$(slurp)&quot; ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png'" /></keybind>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" /></keybind>
+  </keyboard>
+  <mouse>
+    <default />
+  </mouse>
+  <libinput>
+    <device category="touchpad"><naturalScroll>yes</naturalScroll><tap>yes</tap></device>
+  </libinput>
+</labwc_config>

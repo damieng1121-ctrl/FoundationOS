@@ -1,0 +1,12 @@
+#!/bin/sh
+# foundation-webapp <id> <url>: open a web app in its own window.
+id="$1"; url="$2"
+profile="${XDG_DATA_HOME:-$HOME/.local/share}/foundation/webapps"
+for b in google-chrome-stable microsoft-edge-stable chromium; do
+  if command -v "$b" >/dev/null 2>&1; then
+    exec "$b" --app="$url" --class="fpkg-$id" --user-data-dir="$profile/chromium" --ozone-platform-hint=auto
+  fi
+done
+if command -v firefox >/dev/null 2>&1; then exec firefox --new-window "$url"; fi
+if command -v epiphany-browser >/dev/null 2>&1; then exec epiphany-browser --new-window "$url"; fi
+exec xdg-open "$url"

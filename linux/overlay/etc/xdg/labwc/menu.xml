@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu>
+  <menu id="root-menu" label="">
+    <item label="Foundation menu"><action name="Execute" command="foundation-launcher" /></item>
+    <item label="Terminal"><action name="Execute" command="foot" /></item>
+    <item label="Files"><action name="Execute" command="thunar" /></item>
+    <item label="Foundation Store"><action name="Execute" command="foundation-store" /></item>
+    <separator />
+    <item label="Change wallpaper..."><action name="Execute" command="foundation-settings wallpaper" /></item>
+    <item label="Display settings"><action name="Execute" command="foundation-settings display" /></item>
+    <separator />
+    <item label="Log out"><action name="Exit" /></item>
+  </menu>
+</openbox_menu>

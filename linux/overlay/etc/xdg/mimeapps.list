@@ -1,0 +1,17 @@
+[Default Applications]
+application/x-foundation-package=foundation-app-installer.desktop
+application/x-ms-dos-executable=foundation-app-installer.desktop
+application/x-msdownload=foundation-app-installer.desktop
+application/vnd.microsoft.portable-executable=foundation-app-installer.desktop
+application/x-msi=foundation-app-installer.desktop
+application/x-ole-storage=foundation-app-installer.desktop
+application/vnd.debian.binary-package=foundation-app-installer.desktop
+application/vnd.appimage=foundation-app-installer.desktop
+text/html=org.gnome.Epiphany.desktop
+x-scheme-handler/http=org.gnome.Epiphany.desktop
+x-scheme-handler/https=org.gnome.Epiphany.desktop
+inode/directory=thunar.desktop
+text/plain=org.xfce.mousepad.desktop
+application/pdf=atril.desktop
+image/png=org.xfce.ristretto.desktop
+image/jpeg=org.xfce.ristretto.desktop

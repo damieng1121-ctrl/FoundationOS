@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Foundation Store
+Comment=Get apps: browsers, Office, Windows programs and more
+Icon=foundation
+Exec=foundation-store
+Categories=System;PackageManager;
+Terminal=false

@@ -1,0 +1,37 @@
+---
+componentName: foundation
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 920px,620px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+  productName: Foundation OS
+  shortProductName: Foundation
+  version: 0.2.0
+  shortVersion: "0.2"
+  versionedName: Foundation OS 0.2 "Bedrock"
+  shortVersionedName: Foundation 0.2
+  bootloaderEntryName: Foundation
+  productUrl: https://github.com/damieng1121-ctrl/foundationos
+  supportUrl: https://github.com/damieng1121-ctrl/foundationos/issues
+  knownIssuesUrl: https://github.com/damieng1121-ctrl/foundationos/issues
+  releaseNotesUrl: https://github.com/damieng1121-ctrl/foundationos
+  donateUrl: https://github.com/damieng1121-ctrl/foundationos
+
+images:
+  productLogo: "logo.png"
+  productIcon: "logo.png"
+  productWelcome: "welcome.png"
+
+slideshow: "show.qml"
+slideshowAPI: 2
+
+style:
+  SidebarBackground: "#1a2238"
+  SidebarText: "#ffffff"
+  SidebarTextCurrent: "#ffffff"
+  SidebarBackgroundCurrent: "#4f8cff"

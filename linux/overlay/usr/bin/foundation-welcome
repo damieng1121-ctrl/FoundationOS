@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Welcome screen. In the live session it offers to install Foundation; after installation it
+helps the user get their apps (Chrome, Microsoft 365, Google Drive...) in one click."""
+import os
+import sys
+
+sys.path.insert(0, "/usr/lib/foundation")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+import foundation_ui as ui  # noqa: E402
+
+DONE = os.path.expanduser("~/.config/foundation/welcome-done")
+STARTER = [("google-chrome", "Google Chrome"), ("microsoft-365", "Microsoft 365 (Word, Excel, PowerPoint, Outlook, Teams)"),
+           ("google-drive", "Google Drive, Docs, Sheets, Slides"), ("onlyoffice", "ONLYOFFICE (offline Office files)"),
+           ("vlc", "VLC media player"), ("zoom", "Zoom")]
+
+
+def main():
+    live = ui.is_live()
+    if "--autostart" in sys.argv and not live and os.path.exists(DONE):
+        return
+    ui.apply_css()
+    win = Gtk.Window(title="Welcome to Foundation")
+    win.set_default_size(640, 520)
+    win.set_icon_name("foundation")
+    win.connect("destroy", Gtk.main_quit)
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    win.add(outer)
+    head = ui.css(Gtk.Box(spacing=16), "f-header")
+    head.pack_start(ui.logo_image(64), False, False, 0)
+    tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    tb.pack_start(ui.css(Gtk.Label(label="Welcome to Foundation OS", xalign=0), "f-title"), False, False, 0)
+    ver = open("/usr/share/foundation/VERSION").read().strip() if os.path.exists("/usr/share/foundation/VERSION") else ""
+    tb.pack_start(ui.css(Gtk.Label(label=f"Version {ver} \"Bedrock\"", xalign=0), "f-subtitle"), False, False, 0)
+    head.pack_start(tb, True, True, 0)
+    outer.pack_start(head, False, False, 0)
+    body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    body.set_border_width(20)
+    outer.pack_start(body, True, True, 0)
+
+    if live:
+        body.pack_start(Gtk.Label(label="You're running Foundation from the installation media. Nothing has been "
+                                  "changed on this computer yet. Try things out, then install when you're ready.",
+                                  wrap=True, xalign=0, max_width_chars=70), False, False, 0)
+        b = ui.css(Gtk.Button(label="⬇  Install Foundation OS"), "f-green")
+        b.connect("clicked", lambda *_: (ui.spawn("foundation-installer"), win.destroy()))
+        body.pack_start(b, False, False, 0)
+        t = ui.css(Gtk.Button(label="Keep trying Foundation"), "f-ghost")
+        t.connect("clicked", lambda *_: win.destroy())
+        body.pack_start(t, False, False, 0)
+    else:
+        body.pack_start(Gtk.Label(label="Pick the apps you'd like. You can always get more from the Foundation Store, "
+                                  "or double-click any Windows .exe / .msi installer to install it.",
+                                  wrap=True, xalign=0, max_width_chars=70), False, False, 0)
+        checks = []
+        for app_id, label in STARTER:
+            c = Gtk.CheckButton(label=label)
+            c.set_active(app_id in ("google-chrome", "microsoft-365", "google-drive"))
+            c.app_id = app_id
+            checks.append(c)
+            body.pack_start(c, False, False, 0)
+        row = Gtk.Box(spacing=8)
+
+        def install(*_):
+            ids = [c.app_id for c in checks if c.get_active()]
+            os.makedirs(os.path.dirname(DONE), exist_ok=True)
+            open(DONE, "w").close()
+            if ids:
+                ui.CommandRunner(win, "Installing your apps", ["fpkg", "install", "-y", *ids])
+
+        go = ui.css(Gtk.Button(label="Install selected apps"), "f-primary")
+        go.connect("clicked", install)
+        row.pack_end(go, False, False, 0)
+        store = ui.css(Gtk.Button(label="Open Store"), "f-ghost")
+        store.connect("clicked", lambda *_: ui.spawn("foundation-store"))
+        row.pack_end(store, False, False, 0)
+        skip = ui.css(Gtk.Button(label="Skip"), "f-ghost")
+
+        def skip_cb(*_):
+            os.makedirs(os.path.dirname(DONE), exist_ok=True)
+            open(DONE, "w").close()
+            win.destroy()
+
+        skip.connect("clicked", skip_cb)
+        row.pack_start(skip, False, False, 0)
+        body.pack_end(row, False, False, 0)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

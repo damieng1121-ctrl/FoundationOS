@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Foundation Store: browse the catalog, install/remove apps, install files, run updates."""
+import json
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, "/usr/lib/foundation")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+import foundation_ui as ui  # noqa: E402
+
+SOURCES = {"apt": "System package", "apt-repo": "Official vendor build", "flatpak": "Flathub",
+           "webapp": "Web app", "rclone": "Cloud folder", "windows": "Windows app (Wine)", "bundle": "Foundation package"}
+CATEGORIES = ["All", "Browsers", "Office", "Cloud Storage", "Communication", "Media", "Development",
+              "Windows Apps", "Games", "Utilities", "Installed"]
+
+
+class Store(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Foundation Store")
+        ui.apply_css()
+        self.set_default_size(1000, 680)
+        self.set_icon_name("foundation")
+        self.apps = []
+        self.category = "All"
+
+        hb = Gtk.HeaderBar(show_close_button=True, title="Foundation Store")
+        self.set_titlebar(hb)
+        file_btn = ui.css(Gtk.Button(label="Install from file…"), "f-ghost")
+        file_btn.connect("clicked", self.install_file)
+        hb.pack_end(file_btn)
+        upd = ui.css(Gtk.Button(label="Updates"), "f-primary")
+        upd.connect("clicked", lambda *_: self.run("Installing updates", ["fpkg", "update"]))
+        hb.pack_end(upd)
+
+        root = Gtk.Box()
+        self.add(root)
+        side = ui.css(Gtk.ListBox(), "f-side")
+        side.set_size_request(200, -1)
+        for c in CATEGORIES:
+            row = Gtk.ListBoxRow()
+            row.add(Gtk.Label(label=c, xalign=0))
+            row.cat = c
+            side.add(row)
+        side.connect("row-selected", self.on_cat)
+        root.pack_start(ui.css(side, "f-dark"), False, False, 0)
+
+        main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        main.set_border_width(18)
+        root.pack_start(main, True, True, 0)
+        banner = ui.css(Gtk.Box(spacing=14), "f-header")
+        banner.pack_start(ui.logo_image(48), False, False, 0)
+        bt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bt.pack_start(ui.css(Gtk.Label(label="Get apps for Foundation", xalign=0), "f-title"), False, False, 0)
+        bt.pack_start(ui.css(Gtk.Label(
+            label="Browsers, Microsoft 365, Google Workspace, Windows programs (.exe / .msi) and more.",
+            xalign=0), "f-subtitle"), False, False, 0)
+        banner.pack_start(bt, True, True, 0)
+        main.pack_start(banner, False, False, 0)
+        self.search = ui.css(Gtk.SearchEntry(placeholder_text="Search the Foundation Store…"), "f-search")
+        self.search.connect("search-changed", lambda *_: self.refresh_view())
+        main.pack_start(self.search, False, False, 0)
+        sw = Gtk.ScrolledWindow()
+        self.grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=3,
+                                min_children_per_line=2, homogeneous=True, row_spacing=12, column_spacing=12)
+        sw.add(self.grid)
+        main.pack_start(sw, True, True, 0)
+        self.connect("destroy", Gtk.main_quit)
+        self.show_all()
+        side.select_row(side.get_row_at_index(0))
+        self.load()
+
+    def load(self):
+        out = subprocess.run(["fpkg", "list", "--json"], capture_output=True, text=True).stdout
+        self.apps = json.loads(out or "[]")
+        self.refresh_view()
+
+    def on_cat(self, lb, row):
+        if row:
+            self.category = row.cat
+            self.refresh_view()
+
+    def refresh_view(self):
+        for c in self.grid.get_children():
+            self.grid.remove(c)
+        q = self.search.get_text().lower()
+        for a in sorted(self.apps, key=lambda a: a["name"].lower()):
+            if self.category == "Installed" and not a["installed"]:
+                continue
+            if self.category not in ("All", "Installed") and a["category"] != self.category:
+                continue
+            if q and q not in (a["name"] + a.get("description", "") + a["id"]).lower():
+                continue
+            self.grid.add(self.card(a))
+        self.grid.show_all()
+
+    def card(self, a):
+        box = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8), "f-card")
+        top = Gtk.Box(spacing=12)
+        img = Gtk.Image.new_from_icon_name(a.get("icon", "application-x-executable"), Gtk.IconSize.DIALOG)
+        img.set_pixel_size(48)
+        theme = Gtk.IconTheme.get_default()
+        if not theme.has_icon(a.get("icon", "")):
+            img.set_from_icon_name({"webapp": "web-browser", "windows": "wine", "rclone": "folder-cloud"}.get(
+                a["source"], "application-x-executable"), Gtk.IconSize.DIALOG)
+            img.set_pixel_size(48)
+        top.pack_start(img, False, False, 0)
+        tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        tb.pack_start(ui.css(Gtk.Label(label=a["name"], xalign=0, ellipsize=3), "f-h2"), False, False, 0)
+        tb.pack_start(ui.css(Gtk.Label(label=SOURCES.get(a["source"], a["source"]), xalign=0), "f-badge"),
+                      False, False, 0)
+        top.pack_start(tb, True, True, 0)
+        box.pack_start(top, False, False, 0)
+        d = ui.css(Gtk.Label(label=a.get("description", ""), xalign=0, wrap=True, max_width_chars=34, lines=3,
+                             ellipsize=3), "f-muted")
+        d.set_size_request(-1, 54)
+        box.pack_start(d, True, True, 0)
+        row = Gtk.Box(spacing=8)
+        if a["installed"]:
+            rm = ui.css(Gtk.Button(label="Remove"), "f-ghost")
+            rm.connect("clicked", lambda *_: self.run(f"Removing {a['name']}", ["fpkg", "remove", a["id"]]))
+            row.pack_end(rm, False, False, 0)
+            row.pack_start(ui.css(Gtk.Label(label="✓ Installed"), "f-muted"), False, False, 0)
+        else:
+            b = ui.css(Gtk.Button(label="Install"), "f-primary")
+            b.connect("clicked", lambda *_: self.run(f"Installing {a['name']}", ["fpkg", "install", "-y", a["id"]]))
+            row.pack_end(b, False, False, 0)
+        box.pack_start(row, False, False, 0)
+        if a.get("note"):
+            box.set_tooltip_text(a["note"])
+        box.set_size_request(280, -1)
+        return box
+
+    def run(self, title, cmd):
+        ui.CommandRunner(self, title, cmd, on_done=lambda rc: self.load())
+
+    def install_file(self, *_):
+        dlg = Gtk.FileChooserDialog(title="Choose an app to install", parent=self, action=Gtk.FileChooserAction.OPEN)
+        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Install", Gtk.ResponseType.OK)
+        f = Gtk.FileFilter()
+        f.set_name("Apps (.exe, .msi, .fpkg, .deb, .AppImage, .flatpakref)")
+        for pat in ("*.exe", "*.EXE", "*.msi", "*.MSI", "*.fpkg", "*.deb", "*.AppImage", "*.appimage", "*.flatpakref"):
+            f.add_pattern(pat)
+        dlg.add_filter(f)
+        dlg.set_current_folder(os.path.expanduser("~/Downloads") if os.path.isdir(
+            os.path.expanduser("~/Downloads")) else os.path.expanduser("~"))
+        if dlg.run() == Gtk.ResponseType.OK:
+            path = dlg.get_filename()
+            dlg.destroy()
+            self.run(f"Installing {os.path.basename(path)}", ["fpkg", "install", "-y", path])
+        else:
+            dlg.destroy()
+
+
+if __name__ == "__main__":
+    Store()
+    Gtk.main()

@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Opened when you double-click a .exe, .msi, .fpkg or .deb file."""
+import os
+import sys
+
+sys.path.insert(0, "/usr/lib/foundation")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+import foundation_ui as ui  # noqa: E402
+
+
+def kind(path):
+    p = path.lower()
+    if p.endswith(".msi"):
+        return "Windows installer package (MSI)", True
+    if p.endswith(".exe"):
+        return "Windows program", True
+    if p.endswith(".fpkg"):
+        return "Foundation package", False
+    if p.endswith(".deb"):
+        return "Linux software package", False
+    if p.endswith(".appimage"):
+        return "Portable Linux app (AppImage)", False
+    return "File", False
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: foundation-app-installer <file>")
+        sys.exit(2)
+    path = os.path.abspath(sys.argv[1])
+    ui.apply_css()
+    desc, windows = kind(path)
+    win = Gtk.Window(title="Install app")
+    win.set_default_size(520, 260)
+    win.set_icon_name("foundation")
+    win.connect("destroy", Gtk.main_quit)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    box.set_border_width(20)
+    win.add(box)
+    top = Gtk.Box(spacing=14)
+    img = Gtk.Image.new_from_icon_name("wine" if windows else "system-software-install", Gtk.IconSize.DIALOG)
+    img.set_pixel_size(64)
+    top.pack_start(img, False, False, 0)
+    tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    tb.pack_start(ui.css(Gtk.Label(label=os.path.basename(path), xalign=0, ellipsize=3), "f-title"), False, False, 0)
+    tb.pack_start(ui.css(Gtk.Label(label=desc, xalign=0), "f-muted"), False, False, 0)
+    top.pack_start(tb, True, True, 0)
+    box.pack_start(top, False, False, 0)
+    info = ("Foundation will install this Windows program into its own isolated Windows environment "
+            "(a Wine \"bottle\") and add it to your Foundation menu. Most programs work; some (especially "
+            "anti-cheat games or apps needing special drivers) may not." if windows else
+            "Foundation will install this app and add it to your Foundation menu.")
+    box.pack_start(Gtk.Label(label=info, xalign=0, wrap=True, max_width_chars=60), False, False, 0)
+    row = Gtk.Box(spacing=8)
+    inst = ui.css(Gtk.Button(label="Install"), "f-primary")
+    inst.connect("clicked", lambda *_: ui.CommandRunner(win, f"Installing {os.path.basename(path)}",
+                                                        ["fpkg", "install", "-y", path]))
+    row.pack_end(inst, False, False, 0)
+    if windows and path.lower().endswith(".exe"):
+        once = ui.css(Gtk.Button(label="Just run it"), "f-ghost")
+        once.connect("clicked", lambda *_: (ui.spawn("fpkg", "run", path), win.destroy()))
+        row.pack_end(once, False, False, 0)
+    cancel = ui.css(Gtk.Button(label="Cancel"), "f-ghost")
+    cancel.connect("clicked", lambda *_: win.destroy())
+    row.pack_start(cancel, False, False, 0)
+    box.pack_end(row, False, False, 0)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

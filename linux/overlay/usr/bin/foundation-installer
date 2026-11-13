@@ -1,0 +1,8 @@
+#!/bin/sh
+# Launch the Calamares system installer from the live session.
+if ! grep -qw boot=casper /proc/cmdline; then
+  zenity --info --title "Foundation" --text "Foundation OS is already installed on this computer." 2>/dev/null
+  exit 0
+fi
+export QT_QPA_PLATFORM="wayland;xcb"
+exec sudo -E calamares "$@"

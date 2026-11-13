@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Foundation
+Comment=Foundation OS desktop
+Exec=foundation-session
+Type=Application
+DesktopNames=Foundation;wlroots

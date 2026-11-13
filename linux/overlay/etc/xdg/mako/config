@@ -1,0 +1,10 @@
+font=Inter 10
+background-color=#161d2eee
+text-color=#e8ecf5
+border-color=#4f8cff
+border-radius=10
+border-size=1
+padding=12
+default-timeout=6000
+anchor=bottom-right
+margin=10,10,54,10

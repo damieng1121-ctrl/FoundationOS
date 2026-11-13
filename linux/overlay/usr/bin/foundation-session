@@ -1,0 +1,19 @@
+#!/bin/sh
+# Start the Foundation desktop (labwc compositor + Foundation shell components).
+export XDG_CURRENT_DESKTOP=Foundation:wlroots
+export XDG_SESSION_DESKTOP=foundation
+export XDG_SESSION_TYPE=wayland
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM="wayland;xcb"
+export GDK_BACKEND="wayland,x11"
+export SDL_VIDEODRIVER="wayland,x11"
+export _JAVA_AWT_WM_NONREPARENTING=1
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+# Virtual machines often have no 3D acceleration and broken hardware cursors.
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+  export WLR_RENDERER=pixman
+fi
+if [ "$(systemd-detect-virt 2>/dev/null || echo none)" != "none" ]; then
+  export WLR_NO_HARDWARE_CURSORS=1
+fi
+exec labwc

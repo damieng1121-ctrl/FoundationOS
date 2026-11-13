@@ -1,0 +1,7 @@
+#!/bin/sh
+# Waybar module: show the "Install Foundation" button only in the live session.
+if grep -qw "boot=casper" /proc/cmdline 2>/dev/null; then
+  echo '{"text": "⬇  Install Foundation", "tooltip": "Install Foundation OS on this computer", "class": "live"}'
+else
+  echo '{"text": ""}'
+fi

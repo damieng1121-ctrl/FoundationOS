@@ -1,0 +1,10 @@
+[Unit]
+Description=Foundation: refresh software update information
+After=network-online.target
+Wants=network-online.target
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/foundation/fpkg-helper refresh
+Nice=10

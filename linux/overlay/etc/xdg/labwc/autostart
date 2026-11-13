@@ -1,0 +1,9 @@
+# Foundation desktop session components (run by labwc at login).
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE >/dev/null 2>&1
+swaybg -m fill -i "$(foundation-wallpaper)" >/dev/null 2>&1 &
+waybar -c /etc/xdg/foundation/waybar/config.jsonc -s /etc/xdg/foundation/waybar/style.css >/dev/null 2>&1 &
+mako >/dev/null 2>&1 &
+lxpolkit >/dev/null 2>&1 &
+nm-applet --indicator >/dev/null 2>&1 &
+command -v spice-vdagent >/dev/null && spice-vdagent >/dev/null 2>&1 &
+foundation-welcome --autostart >/dev/null 2>&1 &

@@ -1,0 +1,747 @@
+#!/usr/bin/env python3
+"""fpkg - the Foundation OS package manager.
+
+One front end for every way software reaches Foundation:
+
+  catalog apps   fpkg install google-chrome          (apt repos, Flatpak, web apps, Windows apps)
+  Windows apps   fpkg install ~/Downloads/setup.exe   (.exe / .msi, each in its own Wine "bottle")
+  bundles        fpkg install app.fpkg               (Foundation package format, see `fpkg pack`)
+  Linux pkgs     fpkg install ./thing.deb | ./App.AppImage | flatpak:org.gimp.GIMP | apt:vlc
+  updates        fpkg update                          (OS + apt + Flatpak + bundles)
+"""
+import argparse
+import datetime
+import glob
+import hashlib
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+
+import yaml
+
+CATALOG = os.environ.get("FPKG_CATALOG", "/usr/share/foundation/catalog.yaml")
+HELPER = "/usr/lib/foundation/fpkg-helper"
+HOME = os.path.expanduser("~")
+DATA = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "foundation")
+STATE = os.path.join(DATA, "fpkg", "installed.json")
+BOTTLES = os.path.join(DATA, "bottles")
+APPS_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "applications")
+APPIMAGES = os.path.join(HOME, "Applications")
+FLATHUB = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+UA = "fpkg/0.2 (Foundation OS)"
+
+C = {"b": "\033[1m", "g": "\033[32m", "y": "\033[33m", "r": "\033[31m", "c": "\033[36m", "0": "\033[0m"}
+if not sys.stdout.isatty():
+    C = {k: "" for k in C}
+
+
+def say(msg):
+    print(f"{C['c']}::{C['0']} {msg}", flush=True)
+
+
+def ok(msg):
+    print(f"{C['g']}✓{C['0']} {msg}", flush=True)
+
+
+def die(msg, code=1):
+    print(f"{C['r']}error:{C['0']} {msg}", file=sys.stderr, flush=True)
+    sys.exit(code)
+
+
+def run(cmd, check=True, env=None, **kw):
+    print(f"{C['b']}$ {' '.join(shlex.quote(c) for c in cmd)}{C['0']}", flush=True)
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    r = subprocess.run(cmd, env=e, **kw)
+    if check and r.returncode != 0:
+        die(f"command failed ({r.returncode}): {cmd[0]}")
+    return r
+
+
+def have(cmd):
+    return shutil.which(cmd) is not None
+
+
+# --------------------------------------------------------------------------- state
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(st):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f, indent=2, sort_keys=True)
+    os.replace(tmp, STATE)
+
+
+def record(app_id, **info):
+    st = load_state()
+    info["installed_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    st[app_id] = info
+    save_state(st)
+
+
+def forget(app_id):
+    st = load_state()
+    st.pop(app_id, None)
+    save_state(st)
+
+
+# ------------------------------------------------------------------------- catalog
+
+def catalog():
+    with open(CATALOG) as f:
+        data = yaml.safe_load(f)
+    return {a["id"]: a for a in data["apps"]}
+
+
+def find_app(name):
+    cat = catalog()
+    if name in cat:
+        return cat[name]
+    for a in cat.values():
+        if name.lower() in [x.lower() for x in a.get("aliases", [])] or a["name"].lower() == name.lower():
+            return a
+    return None
+
+
+# ------------------------------------------------------------------- privileges
+
+def root_helper(*args):
+    """Run the privileged helper (apt, repos, .deb installs) via sudo or polkit."""
+    if os.geteuid() == 0:
+        cmd = [HELPER, *args]
+    elif subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0:
+        cmd = ["sudo", "-n", HELPER, *args]
+    elif have("pkexec") and (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
+        cmd = ["pkexec", HELPER, *args]
+    else:
+        cmd = ["sudo", HELPER, *args]
+    return run(cmd)
+
+
+# -------------------------------------------------------------- desktop entries
+
+def write_desktop(file_id, name, exec_line, icon="application-x-executable", comment="", extra=""):
+    os.makedirs(APPS_DIR, exist_ok=True)
+    path = os.path.join(APPS_DIR, f"{file_id}.desktop")
+    with open(path, "w") as f:
+        f.write(
+            "[Desktop Entry]\nType=Application\n"
+            f"Name={name}\nComment={comment}\nExec={exec_line}\nIcon={icon}\n"
+            f"Terminal=false\nX-Foundation-Package={file_id}\n{extra}"
+        )
+    os.chmod(path, 0o755)
+    if have("update-desktop-database"):
+        subprocess.run(["update-desktop-database", APPS_DIR], capture_output=True)
+    return path
+
+
+# ---------------------------------------------------------------- installers
+
+def is_installed(app):
+    src = app["source"]
+    if src in ("apt", "apt-repo"):
+        pkg = app["packages"][0]
+        r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", pkg], capture_output=True, text=True)
+        return "install ok installed" in r.stdout
+    if src == "flatpak":
+        if not have("flatpak"):
+            return False
+        return subprocess.run(["flatpak", "info", app["flatpak"]], capture_output=True).returncode == 0
+    return app["id"] in load_state()
+
+
+def install_apt(app):
+    if app["source"] == "apt-repo":
+        say(f"Adding the {app['name']} software repository")
+        root_helper("repo-add", app["id"])
+    root_helper("apt-install", *app["packages"])
+    ok(f"{app['name']} installed")
+
+
+def ensure_flathub():
+    if not have("flatpak"):
+        die("flatpak is not installed")
+    run(["flatpak", "--user", "remote-add", "--if-not-exists", "flathub", FLATHUB])
+
+
+def install_flatpak(ref, name=None):
+    ensure_flathub()
+    run(["flatpak", "--user", "install", "-y", "--noninteractive", "flathub", ref])
+    ok(f"{name or ref} installed")
+
+
+def install_webapp(app):
+    write_desktop(
+        f"fpkg-webapp-{app['id']}",
+        app["name"],
+        f"foundation-webapp {app['id']} {app['url']}",
+        icon=app.get("icon", "web-browser"),
+        comment=app.get("description", ""),
+        extra=f"Categories={app.get('desktop_category', 'Network')};\nStartupWMClass=fpkg-{app['id']}\n",
+    )
+    record(app["id"], source="webapp", name=app["name"], url=app["url"])
+    ok(f"{app['name']} added to your apps (web app)")
+
+
+def install_rclone(app):
+    remote = app.get("remote", "gdrive")
+    mount = os.path.join(HOME, app.get("mountpoint", "Google Drive"))
+    say(f"Connecting {app['name']} - a browser window will open so you can sign in.")
+    conf = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True).stdout
+    if f"{remote}:" not in conf:
+        run(["rclone", "config", "create", remote, app.get("backend", "drive"), *app.get("rclone_args", [])])
+    os.makedirs(mount, exist_ok=True)
+    unit_dir = os.path.join(HOME, ".config/systemd/user")
+    os.makedirs(unit_dir, exist_ok=True)
+    unit = f"fpkg-{app['id']}.service"
+    with open(os.path.join(unit_dir, unit), "w") as f:
+        f.write(
+            f"[Unit]\nDescription={app['name']} (rclone mount)\nAfter=network-online.target\n\n"
+            "[Service]\nType=notify\n"
+            f"ExecStart=/usr/bin/rclone mount {remote}: {shlex.quote(mount)} --vfs-cache-mode full --dir-cache-time 5m\n"
+            f"ExecStop=/bin/fusermount3 -u {shlex.quote(mount)}\nRestart=on-failure\n\n"
+            "[Install]\nWantedBy=default.target\n"
+        )
+    run(["systemctl", "--user", "daemon-reload"], check=False)
+    run(["systemctl", "--user", "enable", "--now", unit], check=False)
+    record(app["id"], source="rclone", name=app["name"], unit=unit, mount=mount)
+    ok(f"{app['name']} is available in {mount}")
+
+
+# --- Windows apps (Wine bottles) --------------------------------------------
+
+def dq(s):
+    """Quote an argument for a .desktop Exec line (the spec only allows double quotes)."""
+    return '"' + re.sub(r'([\\"`$])', r'\\\1', s) + '"'
+
+
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-") or "app"
+
+
+def wine_env(bottle, arch="win64"):
+    return {
+        "WINEPREFIX": bottle,
+        "WINEARCH": arch,
+        "WINEDEBUG": "-all",
+        # Wine Mono / Gecko are not packaged; skip their download prompts.
+        "WINEDLLOVERRIDES": "mscoree,mshtml=",
+    }
+
+
+def wine_bin():
+    for w in ("wine", "wine64", "/usr/lib/wine/wine64"):
+        if have(w) or os.path.exists(w):
+            return w
+    die("Wine is not installed (run: fpkg install apt:wine)")
+
+
+def wineserver_bin():
+    for w in ("wineserver", "/usr/lib/wine/wineserver64", "/usr/lib/wine/wineserver"):
+        if have(w) or os.path.exists(w):
+            return w
+    return None
+
+
+def new_bottle(app_id, arch="win64", verbs=()):
+    bottle = os.path.join(BOTTLES, app_id)
+    env = wine_env(bottle, arch)
+    if not os.path.exists(os.path.join(bottle, "system.reg")):
+        say(f"Creating Windows environment for {app_id}")
+        os.makedirs(BOTTLES, exist_ok=True)
+        run([wine_bin(), "wineboot", "-i"], env=env, check=False)
+    if verbs:
+        if not have("winetricks"):
+            die("winetricks is required for this app")
+        run(["winetricks", "-q", *verbs], env=env, check=False)
+    return bottle, env
+
+
+def wine_desktop_files(bottle):
+    """Shortcuts Wine generated for this bottle's Start-menu entries."""
+    found = []
+    for path in glob.glob(os.path.join(APPS_DIR, "wine", "**", "*.desktop"), recursive=True):
+        try:
+            with open(path, errors="ignore") as f:
+                text = f.read()
+        except OSError:
+            continue
+        if f'WINEPREFIX="{bottle}"' in text or f"WINEPREFIX={bottle} " in text:
+            found.append(path)
+    return found
+
+
+def find_exes(bottle):
+    pf = []
+    for d in ("Program Files", "Program Files (x86)"):
+        pf += glob.glob(os.path.join(bottle, "drive_c", d, "**", "*.exe"), recursive=True)
+    skip = re.compile(r"(unins|setup|update|crash|helper|install|vc_?redist)", re.I)
+    builtin = re.compile(r"/(Internet Explorer|Windows NT|Windows Media Player|Common Files)/", re.I)
+    return [p for p in pf if not skip.search(os.path.basename(p)) and not builtin.search(p)]
+
+
+def install_windows(installer, app_id=None, name=None, args=None, exec_path=None, verbs=(), arch="win64",
+                    icon=None, version=None, portable=False, extra_state=None):
+    installer = os.path.abspath(installer)
+    name = name or os.path.splitext(os.path.basename(installer))[0]
+    app_id = app_id or slug(name)
+    bottle, env = new_bottle(app_id, arch, verbs)
+    w = wine_bin()
+    before = set(find_exes(bottle))
+    if portable:
+        dest = os.path.join(bottle, "drive_c", "Program Files", name)
+        os.makedirs(dest, exist_ok=True)
+        shutil.copy2(installer, dest)
+        exec_path = exec_path or os.path.join(dest, os.path.basename(installer))
+    elif installer.lower().endswith(".msi"):
+        say(f"Running Windows installer (MSI) for {name}")
+        run([w, "msiexec", "/i", installer, *(args or [])], env=env, check=False)
+    else:
+        say(f"Running Windows installer for {name}")
+        run([w, installer, *(args or [])], env=env, check=False)
+    ws = wineserver_bin()
+    if ws:
+        run([ws, "-w"], env=env, check=False)  # wait for the installer's background processes
+
+    shortcuts = wine_desktop_files(bottle)
+    launcher = None
+    if exec_path:
+        target = exec_path
+        if re.match(r"^[A-Za-z]:", exec_path):
+            target = os.path.join(bottle, "drive_c", exec_path[3:].replace("\\", "/"))
+    elif not shortcuts:
+        exes = [e for e in find_exes(bottle) if e not in before]
+        target = exes[0] if exes else None
+    else:
+        target = None
+    if target:
+        e = " ".join(dq(f"{k}={v}") for k, v in env.items())
+        launcher = write_desktop(
+            f"fpkg-win-{app_id}",
+            name,
+            f"env {e} {w} {dq(target)}",
+            icon=icon or "wine",
+            comment=f"Windows application ({name})",
+            extra="Categories=Wine;\n",
+        )
+    st = {"source": "windows", "name": name, "bottle": bottle, "arch": arch, "version": version,
+          "launcher": launcher, "shortcuts": shortcuts}
+    st.update(extra_state or {})
+    record(app_id, **st)
+    if shortcuts or launcher:
+        ok(f"{name} installed - find it in the Foundation menu")
+    else:
+        print(f"{C['y']}!{C['0']} {name}: installer finished but no program was found. "
+              f"Use `fpkg run --bottle {app_id} <file.exe>` to run something inside it.")
+
+
+def run_windows(path, bottle_id=None):
+    bottle = os.path.join(BOTTLES, bottle_id or "default")
+    _, env = new_bottle(os.path.basename(bottle))
+    os.execvpe(wine_bin(), [wine_bin(), os.path.abspath(path)], {**os.environ, **env})
+
+
+def resolve_download(spec):
+    """Resolve a catalog download spec to a URL (supports GitHub latest releases)."""
+    if "github" in spec:
+        api = f"https://api.github.com/repos/{spec['github']}/releases/latest"
+        req = urllib.request.Request(api, headers={"User-Agent": UA, "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            rel = json.load(r)
+        rx = re.compile(spec["asset"])
+        for a in rel.get("assets", []):
+            if rx.search(a["name"]):
+                return a["browser_download_url"], rel.get("tag_name")
+        die(f"no release asset matching {spec['asset']} in {spec['github']}")
+    return spec["url"], spec.get("version")
+
+
+def download(url, dest_dir):
+    name = os.path.basename(url.split("?")[0]) or "download"
+    dest = os.path.join(dest_dir, name)
+    say(f"Downloading {url}")
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
+        shutil.copyfileobj(r, f)
+    return dest
+
+
+def install_catalog_windows(app):
+    url, version = resolve_download(app["download"])
+    with tempfile.TemporaryDirectory() as td:
+        path = download(url, td)
+        if app.get("sha256"):
+            h = hashlib.sha256(open(path, "rb").read()).hexdigest()
+            if h != app["sha256"]:
+                die("checksum mismatch - refusing to install")
+        install_windows(path, app["id"], app["name"], app.get("args", []), app.get("exec"),
+                        app.get("winetricks", []), app.get("arch", "win64"), app.get("icon"), version,
+                        extra_state={"catalog": True})
+
+
+# --- .fpkg bundles ----------------------------------------------------------
+
+def read_bundle(path):
+    with tarfile.open(path, "r:*") as t:
+        m = t.extractfile("fpkg.json")
+        if not m:
+            die("not a Foundation package (fpkg.json missing)")
+        return json.load(m)
+
+
+def install_bundle(path):
+    manifest = read_bundle(path)
+    app_id = manifest["id"]
+    say(f"Installing {manifest['name']} {manifest.get('version', '')} ({manifest['type']} package)")
+    with tempfile.TemporaryDirectory() as td:
+        with tarfile.open(path, "r:*") as t:
+            t.extractall(td, filter="data")
+        payload = os.path.join(td, "payload")
+        icon = None
+        if manifest.get("icon") and os.path.exists(os.path.join(td, manifest["icon"])):
+            idir = os.path.join(DATA, "icons")
+            os.makedirs(idir, exist_ok=True)
+            icon = os.path.join(idir, f"{app_id}.png")
+            shutil.copy2(os.path.join(td, manifest["icon"]), icon)
+        t = manifest["type"]
+        if t == "windows":
+            install_windows(os.path.join(payload, manifest["installer"]), app_id, manifest["name"],
+                            manifest.get("args", []), manifest.get("exec"), manifest.get("winetricks", []),
+                            manifest.get("arch", "win64"), icon, manifest.get("version"),
+                            portable=manifest.get("portable", False),
+                            extra_state={"update_url": manifest.get("update_url"), "bundle": True})
+        elif t == "native":
+            dest = os.path.join(DATA, "apps", app_id)
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(payload, dest)
+            exe = os.path.join(dest, manifest["exec"])
+            os.chmod(exe, 0o755)
+            write_desktop(f"fpkg-{app_id}", manifest["name"], dq(exe), icon or "application-x-executable",
+                          manifest.get("description", ""))
+            record(app_id, source="bundle-native", name=manifest["name"], version=manifest.get("version"),
+                   path=dest, update_url=manifest.get("update_url"))
+            ok(f"{manifest['name']} installed")
+        elif t == "webapp":
+            install_webapp({"id": app_id, "name": manifest["name"], "url": manifest["url"],
+                            "icon": icon or "web-browser"})
+        else:
+            die(f"unknown package type {t}")
+
+
+def pack(args):
+    src = os.path.abspath(args.input)
+    name = args.name or os.path.splitext(os.path.basename(src))[0]
+    app_id = args.id or slug(name)
+    out = args.output or f"{app_id}-{args.version or '1.0'}.fpkg"
+    low = src.lower()
+    if args.type:
+        ptype = args.type
+    elif low.endswith((".exe", ".msi")):
+        ptype = "windows"
+    else:
+        ptype = "native"
+    manifest = {"format": 1, "id": app_id, "name": name, "version": args.version or "1.0", "type": ptype,
+                "description": args.description or "", "created": datetime.date.today().isoformat()}
+    if ptype == "windows":
+        manifest.update({"installer": os.path.basename(src), "args": shlex.split(args.args or ""),
+                         "arch": args.arch, "portable": args.portable})
+        if args.exec:
+            manifest["exec"] = args.exec
+        if args.winetricks:
+            manifest["winetricks"] = args.winetricks.split(",")
+    else:
+        if not args.exec:
+            die("--exec is required for native packages (path of the program inside the payload)")
+        manifest["exec"] = args.exec
+    if args.update_url:
+        manifest["update_url"] = args.update_url
+    with tempfile.TemporaryDirectory() as td:
+        os.makedirs(os.path.join(td, "payload"))
+        if os.path.isdir(src):
+            shutil.copytree(src, os.path.join(td, "payload"), dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, os.path.join(td, "payload"))
+        if args.icon:
+            shutil.copy2(args.icon, os.path.join(td, "icon.png"))
+            manifest["icon"] = "icon.png"
+        with open(os.path.join(td, "fpkg.json"), "w") as f:
+            json.dump(manifest, f, indent=2)
+        with tarfile.open(out, "w:gz") as t:
+            for item in sorted(os.listdir(td)):
+                t.add(os.path.join(td, item), arcname=item)
+    ok(f"created {out}")
+
+
+# --------------------------------------------------------------- top level
+
+def install_target(target, assume_yes=False):
+    low = target.lower()
+    if os.path.exists(target):
+        if low.endswith(".fpkg"):
+            return install_bundle(target)
+        if low.endswith((".exe", ".msi")):
+            return install_windows(target)
+        if low.endswith(".deb"):
+            root_helper("deb-install", os.path.abspath(target))
+            return ok(f"{os.path.basename(target)} installed")
+        if low.endswith(".appimage"):
+            os.makedirs(APPIMAGES, exist_ok=True)
+            dest = os.path.join(APPIMAGES, os.path.basename(target))
+            shutil.copy2(target, dest)
+            os.chmod(dest, 0o755)
+            name = os.path.basename(target).split(".")[0].replace("-", " ").replace("_", " ")
+            app_id = slug(name)
+            write_desktop(f"fpkg-appimage-{app_id}", name, dq(dest), "application-x-executable")
+            record(app_id, source="appimage", name=name, path=dest)
+            return ok(f"{name} installed")
+        if low.endswith(".flatpakref"):
+            ensure_flathub()
+            return run(["flatpak", "--user", "install", "-y", "--from", target])
+        die("unsupported file type")
+    if target.startswith("flatpak:"):
+        return install_flatpak(target.split(":", 1)[1])
+    if target.startswith("apt:"):
+        return root_helper("apt-install", target.split(":", 1)[1])
+    if target.startswith(("http://", "https://")):
+        with tempfile.TemporaryDirectory() as td:
+            return install_target(download(target, td), assume_yes)
+    app = find_app(target)
+    if not app:
+        die(f"'{target}' is not in the catalog. Try `fpkg search {target}`.")
+    if app.get("note"):
+        print(f"{C['y']}note:{C['0']} {app['note']}")
+    src = app["source"]
+    if src in ("apt", "apt-repo"):
+        install_apt(app)
+    elif src == "flatpak":
+        install_flatpak(app["flatpak"], app["name"])
+    elif src == "webapp":
+        install_webapp(app)
+    elif src == "rclone":
+        install_rclone(app)
+    elif src == "windows":
+        install_catalog_windows(app)
+    elif src == "bundle":
+        install_target(app["download"]["url"])
+    else:
+        die(f"unknown source {src}")
+    for extra in app.get("also", []):
+        install_target(extra, assume_yes)
+
+
+def remove(name):
+    app = find_app(name)
+    st = load_state()
+    if app and app["source"] in ("apt", "apt-repo"):
+        root_helper("apt-remove", *app["packages"])
+        return ok(f"{app['name']} removed")
+    if app and app["source"] == "flatpak":
+        run(["flatpak", "--user", "uninstall", "-y", app["flatpak"]])
+        return ok(f"{app['name']} removed")
+    key = app["id"] if app else name
+    info = st.get(key)
+    if not info:
+        die(f"{name} is not installed")
+    src = info["source"]
+    if src == "windows":
+        for p in info.get("shortcuts", []) + [info.get("launcher")]:
+            if p and os.path.exists(p):
+                os.remove(p)
+        shutil.rmtree(info["bottle"], ignore_errors=True)
+    elif src == "webapp":
+        p = os.path.join(APPS_DIR, f"fpkg-webapp-{key}.desktop")
+        if os.path.exists(p):
+            os.remove(p)
+    elif src == "appimage":
+        os.remove(info["path"])
+        p = os.path.join(APPS_DIR, f"fpkg-appimage-{key}.desktop")
+        if os.path.exists(p):
+            os.remove(p)
+    elif src == "bundle-native":
+        shutil.rmtree(info["path"], ignore_errors=True)
+        p = os.path.join(APPS_DIR, f"fpkg-{key}.desktop")
+        if os.path.exists(p):
+            os.remove(p)
+    elif src == "rclone":
+        run(["systemctl", "--user", "disable", "--now", info["unit"]], check=False)
+        os.remove(os.path.join(HOME, ".config/systemd/user", info["unit"]))
+    forget(key)
+    ok(f"{info['name']} removed")
+
+
+def apt_upgradable():
+    r = subprocess.run(["apt", "list", "--upgradable"], capture_output=True, text=True)
+    return [l for l in r.stdout.splitlines() if "/" in l]
+
+
+def check_bundle_updates():
+    out = []
+    for app_id, info in load_state().items():
+        url = info.get("update_url")
+        if not url:
+            continue
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                latest = json.load(r)
+            if str(latest.get("version")) != str(info.get("version")):
+                out.append((app_id, info, latest))
+        except Exception as e:  # noqa: BLE001 - network errors shouldn't stop updates
+            print(f"{C['y']}!{C['0']} could not check {app_id}: {e}")
+    return out
+
+
+def update(args):
+    say("Updating Foundation OS and system packages")
+    root_helper("upgrade")
+    if have("flatpak"):
+        say("Updating Flatpak apps")
+        run(["flatpak", "--user", "update", "-y", "--noninteractive"], check=False)
+    say("Checking Foundation packages for updates")
+    for app_id, info, latest in check_bundle_updates():
+        say(f"Updating {info['name']} {info.get('version')} -> {latest['version']}")
+        with tempfile.TemporaryDirectory() as td:
+            install_target(download(latest["url"], td))
+    st = load_state()
+    cat = catalog()
+    for app_id, info in st.items():
+        if info.get("catalog") and app_id in cat and cat[app_id]["source"] == "windows":
+            url, version = resolve_download(cat[app_id]["download"])
+            if version and version != info.get("version"):
+                say(f"Updating {info['name']} {info.get('version')} -> {version}")
+                install_catalog_windows(cat[app_id])
+    ok("Everything is up to date")
+
+
+def updates(args):
+    pkgs = apt_upgradable()
+    n = len(pkgs)
+    if args.waybar:
+        if n:
+            print(json.dumps({"text": f"⬆ {n}", "tooltip": f"{n} updates available - click to install",
+                              "class": "available"}))
+        else:
+            print(json.dumps({"text": "", "tooltip": "Up to date", "class": "none"}))
+        return
+    if args.count:
+        print(n)
+        return
+    for p in pkgs:
+        print(p)
+    print(f"{n} update(s) available")
+
+
+def cmd_search(args):
+    term = (args.term or "").lower()
+    cat = catalog()
+    for a in sorted(cat.values(), key=lambda a: (a["category"], a["name"])):
+        hay = " ".join([a["id"], a["name"], a.get("description", ""), a["category"], *a.get("aliases", [])]).lower()
+        if term in hay:
+            mark = f"{C['g']}[installed]{C['0']} " if is_installed(a) else ""
+            print(f"{C['b']}{a['id']:<24}{C['0']} {a['name']:<26} {C['c']}{a['source']:<9}{C['0']} {mark}{a.get('description', '')}")
+
+
+def cmd_list(args):
+    st = load_state()
+    if args.json:
+        cat = catalog()
+        out = []
+        for a in cat.values():
+            out.append({**a, "installed": is_installed(a)})
+        print(json.dumps(out))
+        return
+    for app_id, info in sorted(st.items()):
+        print(f"{app_id:<24} {info['name']:<28} {info['source']:<10} {info.get('version') or ''}")
+    for a in catalog().values():
+        if a["source"] in ("apt", "apt-repo", "flatpak") and is_installed(a):
+            print(f"{a['id']:<24} {a['name']:<28} {a['source']:<10}")
+
+
+def cmd_info(args):
+    app = find_app(args.name)
+    if not app:
+        die("not found")
+    print(yaml.safe_dump({**app, "installed": is_installed(app)}, sort_keys=False))
+
+
+def main():
+    p = argparse.ArgumentParser(prog="fpkg", description="Foundation OS package manager")
+    sp = p.add_subparsers(dest="cmd", required=True)
+    s = sp.add_parser("install", help="install apps, files or URLs")
+    s.add_argument("targets", nargs="+")
+    s.add_argument("-y", "--yes", action="store_true")
+    s = sp.add_parser("remove", help="remove an app")
+    s.add_argument("names", nargs="+")
+    s = sp.add_parser("search", help="search the catalog")
+    s.add_argument("term", nargs="?")
+    s = sp.add_parser("list", help="list installed apps")
+    s.add_argument("--json", action="store_true", help="whole catalog with install state, as JSON")
+    s = sp.add_parser("info", help="show catalog entry")
+    s.add_argument("name")
+    sp.add_parser("update", help="install all updates")
+    s = sp.add_parser("updates", help="show available updates")
+    s.add_argument("--count", action="store_true")
+    s.add_argument("--waybar", action="store_true")
+    s = sp.add_parser("run", help="run a Windows .exe without installing")
+    s.add_argument("file")
+    s.add_argument("--bottle")
+    s = sp.add_parser("pack", help="create a .fpkg package")
+    s.add_argument("input", help="installer (.exe/.msi) or directory/binary for native apps")
+    s.add_argument("--name")
+    s.add_argument("--id")
+    s.add_argument("--version")
+    s.add_argument("--type", choices=["windows", "native"])
+    s.add_argument("--description")
+    s.add_argument("--args", help="installer arguments, e.g. '/S' or '/qn'")
+    s.add_argument("--exec", help="program to launch (Windows path like 'C:/Program Files/App/app.exe')")
+    s.add_argument("--winetricks", help="comma separated winetricks verbs, e.g. vcrun2019,corefonts")
+    s.add_argument("--arch", default="win64", choices=["win64", "win32"])
+    s.add_argument("--portable", action="store_true", help="the .exe is the app itself (no installer)")
+    s.add_argument("--icon")
+    s.add_argument("--update-url", help="URL of a JSON document {version, url} announcing new releases")
+    s.add_argument("-o", "--output")
+    a = p.parse_args()
+
+    if a.cmd == "install":
+        for t in a.targets:
+            install_target(t, a.yes)
+    elif a.cmd == "remove":
+        for n in a.names:
+            remove(n)
+    elif a.cmd == "search":
+        cmd_search(a)
+    elif a.cmd == "list":
+        cmd_list(a)
+    elif a.cmd == "info":
+        cmd_info(a)
+    elif a.cmd == "update":
+        update(a)
+    elif a.cmd == "updates":
+        updates(a)
+    elif a.cmd == "run":
+        run_windows(a.file, a.bottle)
+    elif a.cmd == "pack":
+        pack(a)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

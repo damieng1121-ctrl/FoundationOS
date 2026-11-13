@@ -1,0 +1,60 @@
+* {
+  font-family: "Inter", "Noto Sans", "Noto Color Emoji", sans-serif;
+  font-size: 13px;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+window#waybar {
+  background: rgba(10, 15, 28, 0.88);
+  color: #e8ecf5;
+  border-top: 1px solid #34405c;
+}
+#image.logo {
+  background: #4f8cff;
+  margin: 6px 0 6px 6px;
+  padding: 0 4px 0 10px;
+  border-radius: 8px 0 0 8px;
+}
+#custom-start {
+  background: #4f8cff;
+  color: #ffffff;
+  font-weight: bold;
+  margin: 6px 8px 6px 0;
+  padding: 0 14px 0 6px;
+  border-radius: 0 8px 8px 0;
+}
+#custom-start:hover, #image.logo:hover { background: #3b6fe0; }
+#taskbar button {
+  color: #e8ecf5;
+  background: #1c2438;
+  margin: 6px 3px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border-bottom: 2px solid transparent;
+}
+#taskbar button.active {
+  background: #2a3550;
+  border-bottom: 2px solid #4f8cff;
+}
+#taskbar button.minimized { color: #8090b0; background: #141a2a; }
+#taskbar button:hover { background: #2f3e60; }
+#custom-install {
+  background: #3fb37f;
+  color: white;
+  font-weight: bold;
+  margin: 6px 4px;
+  padding: 0 14px;
+  border-radius: 8px;
+}
+#custom-updates.available {
+  background: #f2a93b;
+  color: #1a1206;
+  font-weight: bold;
+  margin: 6px 4px;
+  padding: 0 12px;
+  border-radius: 8px;
+}
+#tray, #network, #pulseaudio, #battery { padding: 0 10px; color: #c9d3ea; }
+#clock { padding: 0 14px 0 10px; font-weight: bold; color: #ffffff; }
+tooltip { background: #161d2e; border: 1px solid #2f3c5c; border-radius: 8px; }

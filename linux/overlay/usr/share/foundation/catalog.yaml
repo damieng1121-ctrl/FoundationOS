@@ -1,0 +1,220 @@
+# Foundation software catalog, used by `fpkg` and the Foundation Store.
+#
+# source types:
+#   apt        package(s) from the Ubuntu archive
+#   apt-repo   vendor repository (key + line) added on first install, then apt; updates come via `fpkg update`
+#   flatpak    Flathub app (installed per user)
+#   webapp     web application with its own window and launcher (Chrome/Edge app mode, falls back to the default browser)
+#   rclone     cloud drive mounted into your home folder
+#   windows    Windows installer downloaded and installed into its own Wine bottle
+apps:
+  # ------------------------------------------------------------------ Browsers
+  - id: google-chrome
+    name: Google Chrome
+    category: Browsers
+    icon: google-chrome
+    aliases: [chrome]
+    description: Google's web browser. Official build from Google's repository.
+    source: apt-repo
+    repo:
+      key: https://dl.google.com/linux/linux_signing_key.pub
+      keyring: google-chrome.gpg
+      list: google-chrome.list
+      line: "deb [arch=amd64 signed-by=@KEYRING@] https://dl.google.com/linux/chrome/deb/ stable main"
+    packages: [google-chrome-stable]
+
+  - id: microsoft-edge
+    name: Microsoft Edge
+    category: Browsers
+    icon: microsoft-edge
+    aliases: [edge]
+    description: Microsoft's web browser. Official build from Microsoft's repository.
+    source: apt-repo
+    repo:
+      key: https://packages.microsoft.com/keys/microsoft.asc
+      keyring: microsoft.gpg
+      list: microsoft-edge.list
+      line: "deb [arch=amd64 signed-by=@KEYRING@] https://packages.microsoft.com/repos/edge stable main"
+    packages: [microsoft-edge-stable]
+
+  - id: firefox
+    name: Mozilla Firefox
+    category: Browsers
+    icon: firefox
+    description: Firefox from Mozilla's own repository (not a snap).
+    source: apt-repo
+    repo:
+      key: https://packages.mozilla.org/apt/repo-signing-key.gpg
+      keyring: packages.mozilla.org.gpg
+      list: mozilla.list
+      line: "deb [signed-by=@KEYRING@] https://packages.mozilla.org/apt mozilla main"
+      pin: |
+        Package: *
+        Pin: origin packages.mozilla.org
+        Pin-Priority: 1000
+    packages: [firefox]
+
+  # ----------------------------------------------------------- Office (Microsoft 365)
+  - id: microsoft-365
+    name: Microsoft 365 (Office)
+    category: Office
+    icon: ms-office
+    aliases: [office, microsoft-office, office365, m365]
+    description: Word, Excel, PowerPoint, Outlook, OneNote and Teams as installed apps.
+    note: Microsoft does not make desktop Office for Linux; Foundation installs the full Microsoft 365 web apps, which open in their own windows. Install Google Chrome or Edge for the best experience.
+    source: webapp
+    url: https://www.microsoft365.com/
+    also: [microsoft-word, microsoft-excel, microsoft-powerpoint, microsoft-outlook, microsoft-onenote, microsoft-teams]
+
+  - {id: microsoft-word, name: Microsoft Word, category: Office, icon: x-office-document, source: webapp,
+     url: "https://www.microsoft365.com/launch/word", description: Word documents (Microsoft 365).}
+  - {id: microsoft-excel, name: Microsoft Excel, category: Office, icon: x-office-spreadsheet, source: webapp,
+     url: "https://www.microsoft365.com/launch/excel", description: Excel spreadsheets (Microsoft 365).}
+  - {id: microsoft-powerpoint, name: Microsoft PowerPoint, category: Office, icon: x-office-presentation, source: webapp,
+     url: "https://www.microsoft365.com/launch/powerpoint", description: PowerPoint presentations (Microsoft 365).}
+  - {id: microsoft-outlook, name: Microsoft Outlook, category: Office, icon: internet-mail, source: webapp,
+     url: "https://outlook.office.com/mail/", description: Outlook mail and calendar.}
+  - {id: microsoft-onenote, name: Microsoft OneNote, category: Office, icon: accessories-text-editor, source: webapp,
+     url: "https://www.onenote.com/notebooks", description: OneNote notebooks.}
+  - {id: microsoft-teams, name: Microsoft Teams, category: Communication, icon: teams, source: webapp,
+     url: "https://teams.microsoft.com/", description: Chat, meetings and calls.}
+
+  - id: onlyoffice
+    name: ONLYOFFICE Desktop Editors
+    category: Office
+    icon: onlyoffice-desktopeditors
+    description: Offline office suite with excellent Word/Excel/PowerPoint file compatibility.
+    source: flatpak
+    flatpak: org.onlyoffice.desktopeditors
+
+  - id: libreoffice
+    name: LibreOffice
+    category: Office
+    icon: libreoffice-startcenter
+    description: Full offline office suite - Writer, Calc, Impress.
+    source: apt
+    packages: [libreoffice-writer, libreoffice-calc, libreoffice-impress, libreoffice-gtk3]
+
+  # ------------------------------------------------------------- Google Workspace
+  - id: google-drive
+    name: Google Drive
+    category: Cloud Storage
+    icon: google-drive
+    aliases: [drive, gdrive]
+    description: Google Drive as an app, plus Docs, Sheets and Slides.
+    source: webapp
+    url: https://drive.google.com/
+    also: [google-docs, google-sheets, google-slides]
+  - {id: google-docs, name: Google Docs, category: Office, icon: x-office-document, source: webapp,
+     url: "https://docs.google.com/document/", description: Google Docs.}
+  - {id: google-sheets, name: Google Sheets, category: Office, icon: x-office-spreadsheet, source: webapp,
+     url: "https://docs.google.com/spreadsheets/", description: Google Sheets.}
+  - {id: google-slides, name: Google Slides, category: Office, icon: x-office-presentation, source: webapp,
+     url: "https://docs.google.com/presentation/", description: Google Slides.}
+  - {id: gmail, name: Gmail, category: Communication, icon: internet-mail, source: webapp,
+     url: "https://mail.google.com/", description: Google mail.}
+
+  - id: google-drive-sync
+    name: Google Drive (folder sync)
+    category: Cloud Storage
+    icon: folder-google-drive
+    description: Your Google Drive as a folder in Files ("~/Google Drive"), kept in sync with rclone.
+    source: rclone
+    remote: gdrive
+    backend: drive
+    mountpoint: Google Drive
+    rclone_args: [scope, drive]
+
+  - id: onedrive
+    name: Microsoft OneDrive
+    category: Cloud Storage
+    icon: onedrive
+    description: OneDrive in your browser window, as an app.
+    source: webapp
+    url: https://onedrive.live.com/
+  - id: onedrive-sync
+    name: OneDrive (folder sync)
+    category: Cloud Storage
+    icon: folder-cloud
+    description: Your OneDrive as a folder in Files ("~/OneDrive"), using rclone.
+    source: rclone
+    remote: onedrive
+    backend: onedrive
+    mountpoint: OneDrive
+  - id: dropbox-sync
+    name: Dropbox (folder sync)
+    category: Cloud Storage
+    icon: dropbox
+    description: Your Dropbox as a folder in Files ("~/Dropbox"), using rclone.
+    source: rclone
+    remote: dropbox
+    backend: dropbox
+    mountpoint: Dropbox
+
+  # ---------------------------------------------------------------- Communication
+  - {id: zoom, name: Zoom, category: Communication, icon: us.zoom.Zoom, source: flatpak, flatpak: us.zoom.Zoom,
+     description: Video meetings.}
+  - {id: slack, name: Slack, category: Communication, icon: com.slack.Slack, source: flatpak, flatpak: com.slack.Slack,
+     description: Team chat.}
+  - {id: discord, name: Discord, category: Communication, icon: com.discordapp.Discord, source: flatpak,
+     flatpak: com.discordapp.Discord, description: Voice, video and text chat.}
+  - {id: whatsapp, name: WhatsApp, category: Communication, icon: whatsapp, source: webapp,
+     url: "https://web.whatsapp.com/", description: WhatsApp on your desktop.}
+  - {id: thunderbird, name: Thunderbird, category: Communication, icon: org.mozilla.Thunderbird, source: flatpak,
+     flatpak: org.mozilla.Thunderbird, description: Email client.}
+
+  # ------------------------------------------------------------------ Media
+  - {id: spotify, name: Spotify, category: Media, icon: com.spotify.Client, source: flatpak, flatpak: com.spotify.Client,
+     description: Music streaming.}
+  - {id: vlc, name: VLC media player, category: Media, icon: vlc, source: apt, packages: [vlc],
+     description: Plays almost any video or audio file.}
+  - {id: gimp, name: GIMP, category: Media, icon: gimp, source: apt, packages: [gimp], description: Image editor.}
+  - {id: inkscape, name: Inkscape, category: Media, icon: inkscape, source: apt, packages: [inkscape],
+     description: Vector graphics editor.}
+  - {id: obs-studio, name: OBS Studio, category: Media, icon: com.obsproject.Studio, source: flatpak,
+     flatpak: com.obsproject.Studio, description: Screen recording and streaming.}
+
+  # ------------------------------------------------------------- Development
+  - id: vscode
+    name: Visual Studio Code
+    category: Development
+    icon: vscode
+    aliases: [code]
+    description: Microsoft's code editor, from Microsoft's repository.
+    source: apt-repo
+    repo:
+      key: https://packages.microsoft.com/keys/microsoft.asc
+      keyring: microsoft.gpg
+      list: vscode.list
+      line: "deb [arch=amd64 signed-by=@KEYRING@] https://packages.microsoft.com/repos/code stable main"
+    packages: [code]
+  - {id: git, name: Git, category: Development, icon: git, source: apt, packages: [git], description: Version control.}
+
+  # ------------------------------------------------------------ Windows apps
+  - id: notepad-plus-plus
+    name: Notepad++
+    category: Windows Apps
+    icon: wine
+    description: The Windows text editor, installed with Wine. Always the latest release.
+    source: windows
+    download: {github: notepad-plus-plus/notepad-plus-plus, asset: 'npp\.[0-9.]+\.Installer\.x64\.exe$'}
+    args: ["/S"]
+    exec: "C:/Program Files/Notepad++/notepad++.exe"
+  - id: bottles
+    name: Bottles
+    category: Windows Apps
+    icon: com.usebottles.bottles
+    description: Advanced manager for running Windows software (gaming and tricky apps).
+    source: flatpak
+    flatpak: com.usebottles.bottles
+
+  # ------------------------------------------------------------------ Games
+  - {id: steam, name: Steam, category: Games, icon: com.valvesoftware.Steam, source: flatpak,
+     flatpak: com.valvesoftware.Steam, description: "Games, including many Windows games via Proton."}
+
+  # ---------------------------------------------------------------- Utilities
+  - {id: 7zip, name: 7-Zip, category: Utilities, icon: 7zip, source: apt, packages: [7zip], description: File archiver.}
+  - {id: timeshift, name: Timeshift, category: Utilities, icon: timeshift, source: apt, packages: [timeshift],
+     description: System snapshots and restore.}
+  - {id: gparted, name: GParted, category: Utilities, icon: gparted, source: apt, packages: [gparted],
+     description: Disk partition editor.}

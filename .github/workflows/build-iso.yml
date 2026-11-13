@@ -1,0 +1,48 @@
+name: Build Foundation OS ISO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+    paths: ["linux/**", ".github/workflows/build-iso.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h / /mnt
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mmdebstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools
+
+      - name: Build ISO
+        run: |
+          sudo mkdir -p /mnt/foundation
+          sudo WORK=/mnt/foundation/work OUT="$PWD/linux/out" ./linux/build-iso.sh
+          ls -lh linux/out
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-os-iso
+          path: linux/out/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish release (version tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: linux/out/*

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Software Updates
+Comment=Install updates for Foundation and your apps
+Icon=system-software-update
+Exec=foundation-updates
+Categories=System;
+Terminal=false

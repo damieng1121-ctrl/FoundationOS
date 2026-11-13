@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Foundation start menu: search + app grid + power controls. Run again to close it."""
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, "/usr/lib/foundation")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gio, Gtk, GtkLayerShell  # noqa: E402
+
+import foundation_ui as ui  # noqa: E402
+
+PINNED = ["foundation-store.desktop", "thunar.desktop", "foot.desktop", "org.gnome.Epiphany.desktop",
+          "google-chrome.desktop", "foundation-settings.desktop"]
+
+
+class Launcher(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="os.foundation.Launcher")
+        self.win = None
+
+    def do_activate(self):
+        if self.win:  # second invocation toggles the menu closed
+            self.quit()
+            return
+        ui.apply_css()
+        self.win = w = Gtk.Window(application=self)
+        w.set_title("foundation-launcher")
+        w.set_default_size(600, 640)
+        GtkLayerShell.init_for_window(w)
+        GtkLayerShell.set_layer(w, GtkLayerShell.Layer.OVERLAY)
+        GtkLayerShell.set_anchor(w, GtkLayerShell.Edge.BOTTOM, True)
+        GtkLayerShell.set_anchor(w, GtkLayerShell.Edge.LEFT, True)
+        GtkLayerShell.set_margin(w, GtkLayerShell.Edge.BOTTOM, 50)
+        GtkLayerShell.set_margin(w, GtkLayerShell.Edge.LEFT, 6)
+        GtkLayerShell.set_keyboard_mode(w, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+        w.connect("key-press-event", self.on_key)
+
+        outer = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "f-panel")
+        w.add(outer)
+
+        head = ui.css(Gtk.Box(spacing=12), "f-header")
+        head.pack_start(ui.logo_image(42), False, False, 0)
+        tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        tb.pack_start(ui.css(Gtk.Label(label="Foundation OS", xalign=0), "f-title"), False, False, 0)
+        user = os.environ.get("USER", "")
+        tb.pack_start(ui.css(Gtk.Label(label=f"Signed in as {user}", xalign=0), "f-subtitle"), False, False, 0)
+        head.pack_start(tb, True, True, 0)
+        outer.pack_start(head, False, False, 0)
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        body.set_border_width(14)
+        outer.pack_start(body, True, True, 0)
+
+        self.search = ui.css(Gtk.SearchEntry(placeholder_text="Search apps…"), "f-search")
+        self.search.connect("search-changed", lambda *_: self.flow.invalidate_filter())
+        self.search.connect("activate", self.launch_first)
+        body.pack_start(self.search, False, False, 0)
+
+        if ui.is_live():
+            inst = ui.css(Gtk.Button(label="⬇  Install Foundation on this computer"), "f-green")
+            inst.connect("clicked", lambda *_: self.run_cmd("foundation-installer"))
+            body.pack_start(inst, False, False, 0)
+
+        sw = Gtk.ScrolledWindow()
+        sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=5,
+                                min_children_per_line=5, homogeneous=True, row_spacing=4, column_spacing=4)
+        self.flow.set_filter_func(self.filter)
+        self.flow.set_sort_func(self.sort)
+        sw.add(self.flow)
+        body.pack_start(sw, True, True, 0)
+
+        apps = [a for a in Gio.AppInfo.get_all() if a.should_show()]
+        seen = set()
+        for app in apps:
+            if app.get_name() in seen:
+                continue
+            seen.add(app.get_name())
+            self.flow.add(self.app_button(app))
+
+        foot = Gtk.Box(spacing=8)
+        for label, cmd, cls in [("Settings", "foundation-settings", "f-ghost"),
+                                ("Store", "foundation-store", "f-ghost")]:
+            b = ui.css(Gtk.Button(label=label), cls)
+            b.connect("clicked", lambda _b, c=cmd: self.run_cmd(c))
+            foot.pack_start(b, False, False, 0)
+        for label, cmd, cls in [("Shut down", "systemctl poweroff", "f-danger"),
+                                ("Restart", "systemctl reboot", "f-ghost"),
+                                ("Log out", "labwc --exit", "f-ghost")]:
+            b = ui.css(Gtk.Button(label=label), cls)
+            b.connect("clicked", lambda _b, c=cmd: self.run_cmd(*c.split()))
+            foot.pack_end(b, False, False, 0)
+        body.pack_start(foot, False, False, 0)
+        w.show_all()
+        self.search.grab_focus()
+
+    def app_button(self, app):
+        b = ui.css(Gtk.Button(), "f-app")
+        b.set_relief(Gtk.ReliefStyle.NONE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        icon = app.get_icon()
+        img = Gtk.Image.new_from_gicon(icon, Gtk.IconSize.DIALOG) if icon else Gtk.Image.new_from_icon_name(
+            "application-x-executable", Gtk.IconSize.DIALOG)
+        img.set_pixel_size(44)
+        box.pack_start(img, False, False, 0)
+        lbl = Gtk.Label(label=app.get_name(), max_width_chars=12, ellipsize=3, justify=Gtk.Justification.CENTER)
+        lbl.set_lines(2)
+        lbl.set_line_wrap(True)
+        box.pack_start(lbl, False, False, 0)
+        b.add(box)
+        b.set_tooltip_text(app.get_description() or app.get_name())
+        b.connect("clicked", lambda *_: self.launch(app))
+        child = Gtk.FlowBoxChild()
+        child.add(b)
+        child.app = app
+        return child
+
+    def filter(self, child):
+        q = self.search.get_text().strip().lower()
+        if not q:
+            return True
+        a = child.app
+        hay = " ".join(filter(None, [a.get_name(), a.get_description() or "", a.get_id() or "",
+                                     " ".join(a.get_keywords() if hasattr(a, "get_keywords") else [])])).lower()
+        return q in hay
+
+    def sort(self, c1, c2):
+        def key(c):
+            pid = c.app.get_id()
+            return (0 if pid in PINNED else 1, PINNED.index(pid) if pid in PINNED else 0, c.app.get_name().lower())
+        k1, k2 = key(c1), key(c2)
+        return (k1 > k2) - (k1 < k2)
+
+    def launch_first(self, *_):
+        for c in self.flow.get_children():
+            if c.get_child_visible() and self.filter(c):
+                self.launch(c.app)
+                return
+
+    def launch(self, app):
+        try:
+            app.launch([], None)
+        finally:
+            self.quit()
+
+    def run_cmd(self, *cmd):
+        ui.spawn(*cmd)
+        self.quit()
+
+    def on_key(self, w, ev):
+        from gi.repository import Gdk
+        if ev.keyval == Gdk.KEY_Escape:
+            self.quit()
+            return True
+        return False
+
+
+if __name__ == "__main__":
+    Launcher().run(sys.argv[:1])

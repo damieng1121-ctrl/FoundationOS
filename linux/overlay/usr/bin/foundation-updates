@@ -1,0 +1,3 @@
+#!/bin/sh
+# Install all updates in a terminal window, then refresh the taskbar indicator.
+exec foot --title "Foundation Updates" sh -c 'fpkg update; pkill -RTMIN+8 waybar; echo; echo "Press Enter to close"; read _'

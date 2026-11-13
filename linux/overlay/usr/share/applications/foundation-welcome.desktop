@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to Foundation
+Comment=Get started with Foundation OS
+Icon=foundation
+Exec=foundation-welcome
+Categories=System;
+Terminal=false

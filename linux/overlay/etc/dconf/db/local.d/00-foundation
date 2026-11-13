@@ -1,0 +1,9 @@
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+gtk-theme='Adwaita-dark'
+icon-theme='Papirus-Dark'
+font-name='Inter 10'
+cursor-theme='Adwaita'
+
+[org/gnome/desktop/wm/preferences]
+button-layout=':minimize,maximize,close'

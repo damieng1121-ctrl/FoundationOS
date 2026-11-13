@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Foundation App Installer
+Comment=Install Windows programs, Foundation packages and Linux apps
+Icon=system-software-install
+Exec=foundation-app-installer %f
+MimeType=application/x-foundation-package;application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;application/x-msi;application/x-ole-storage;application/vnd.debian.binary-package;application/x-iso9660-appimage;application/vnd.appimage;
+NoDisplay=true
+Terminal=false

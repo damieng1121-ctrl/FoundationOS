@@ -1,0 +1,11 @@
+[Unit]
+Description=Foundation: check for updates twice a day
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=12h
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
