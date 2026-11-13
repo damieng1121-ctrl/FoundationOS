@@ -16,4 +16,9 @@ fi
 if [ "$(systemd-detect-virt 2>/dev/null || echo none)" != "none" ]; then
   export WLR_NO_HARDWARE_CURSORS=1
 fi
-exec labwc
+# labwc 0.7 only reads menu.xml from its active config directory, so point it at
+# Foundation's system config unless the user has made their own.
+if [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/labwc" ]; then
+  exec labwc
+fi
+exec labwc -C /etc/xdg/labwc
