@@ -74,10 +74,24 @@ build_shell_helper() {
   install -D -m 0755 "$bin" "$ROOT/usr/lib/foundation/foundation-toplevels"
 }
 
+vendor_python() {
+  # Foundation AI: the Anthropic Python SDK, private to Foundation (system Python packages untouched).
+  # Downloaded on the build host as wheels for the image's Python (3.12, x86_64).
+  log "Installing the Anthropic SDK for Foundation AI"
+  rm -rf "$ROOT/usr/lib/foundation/vendor"
+  python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check \
+    --target "$ROOT/usr/lib/foundation/vendor" --python-version 3.12 --implementation cp \
+    --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --only-binary=:all: \
+    "anthropic==2.8.0"
+  find "$ROOT/usr/lib/foundation/vendor" -name "__pycache__" -prune -exec rm -rf {} +
+}
+
 stage_customize() {
   log "Applying Foundation overlay"
   cp -a "$HERE/overlay/." "$ROOT/"
+  find "$ROOT/usr/lib/foundation" -name "__pycache__" -prune -exec rm -rf {} +
   build_shell_helper
+  vendor_python
   cp "$HERE/VERSION" "$ROOT/usr/share/foundation/VERSION"
   install -m 0755 "$HERE/setup-rootfs.sh" "$ROOT/tmp/setup-rootfs.sh"
   mount_chroot

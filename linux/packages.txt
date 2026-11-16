@@ -78,6 +78,8 @@ xdg-desktop-portal-wlr
 xdg-desktop-portal-gtk
 xdg-utils
 zenity
+# Foundation AI: runtime for apps it builds
+gir1.2-webkit2-4.1
 
 # --- Apps
 foot

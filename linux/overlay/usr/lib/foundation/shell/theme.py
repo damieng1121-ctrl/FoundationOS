@@ -32,8 +32,17 @@ button.fs-install:hover { background-color: #34a06f; }
 .fs-tb-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
 .fs-tb-btn:active, .fs-tb-btn.fs-pressed { background-color: rgba(255, 255, 255, 0.14); }
 .fs-tb-btn.fs-active { background-color: rgba(79, 140, 255, 0.18); }
-.fs-start { padding: 4px 10px; }
-.fs-start:hover { background-color: rgba(79, 140, 255, 0.22); }
+button.fs-start {
+  border-radius: 50%; padding: 2px; min-width: 38px; min-height: 38px; margin: 0 4px;
+  background-color: transparent;
+}
+button.fs-start:hover { background-color: rgba(122, 79, 224, 0.35); }
+button.fs-start:active { background-color: rgba(122, 79, 224, 0.55); }
+button.fs-ai {
+  border-radius: 50%; min-width: 38px; min-height: 38px; padding: 0; font-size: 17px; font-weight: 800;
+  color: white; background-image: linear-gradient(135deg, #4f8cff, #7a4fe0);
+}
+button.fs-ai:hover { background-image: linear-gradient(135deg, #6a9dff, #8e66ec); }
 .fs-search-pill {
   background-color: rgba(255, 255, 255, 0.07); border-radius: 18px; padding: 4px 14px;
   color: #aab4cc; min-width: 170px;

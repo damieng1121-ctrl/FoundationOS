@@ -62,6 +62,28 @@ Foundation's desktop is its own: **Foundation Shell** (`overlay/usr/bin/foundati
 | Win+←/→/↑/↓ | Snap left/right, maximise, minimise |
 | Alt+Tab, Alt+F4 | Switch / close windows |
 
+## Foundation AI
+
+Foundation AI (taskbar ✦ button, **Win+C**, or Start) is an assistant built into the OS, powered by Claude
+(`claude-opus-5-5` through the Anthropic API). Ask for what you need and it does it:
+
+- **Builds apps on the spot.** "Make me a budget tracker", "build a Pomodoro timer", "I need a flashcard app
+  for French verbs" - you watch it being written, it opens as soon as it's ready, and it's added to Start.
+  Ask for changes ("make the buttons bigger") and it updates the app. Apps are single HTML files run in a
+  sandboxed web view (`foundation-ai-app`): they keep their own data and can't read your files.
+- **Installs software** from the Foundation Store, Flathub, apt or a downloaded .exe/.msi - always after you
+  approve, with your password where needed.
+- **Opens apps, changes settings** (volume, Wi-Fi, Bluetooth, airplane mode, brightness) and answers
+  questions about your system.
+
+Setup: paste an Anthropic API key (from console.anthropic.com) when you first open it. The key is stored in
+`~/.config/foundation/assistant.json` (readable only by you); `ANTHROPIC_API_KEY` also works. What you type
+is sent to Anthropic to generate replies. Server-side model fallback is enabled, so a request one model
+declines can be answered by another.
+
+Code: `overlay/usr/lib/foundation/assistant/agent.py` (agent loop and tools),
+`overlay/usr/bin/foundation-assistant` (panel), `overlay/usr/bin/foundation-ai-app` (app runner).
+
 ## Installing software
 
 Everything goes through **`fpkg`** (the Foundation Store is a graphical front end to it):
@@ -123,7 +145,7 @@ Manifest fields: `id`, `name`, `version`, `type` (`windows` | `native` | `webapp
 On Ubuntu 24.04 (or in the GitHub workflow):
 
 ```bash
-sudo apt install mmdebstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools
+sudo apt install mmdebstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools python3-pip cargo
 sudo ./build-iso.sh              # -> out/foundation-<version>-amd64.iso
 sudo ./build-iso.sh customize    # re-apply overlay/ to the cached root filesystem
 sudo ./build-iso.sh iso          # repack only
@@ -139,7 +161,7 @@ sudo ./build-iso.sh iso          # repack only
 | `overlay/usr/bin/fpkg`, `overlay/usr/lib/foundation/fpkg-helper` | Package manager (user part / privileged part) |
 | `overlay/usr/share/foundation/catalog.yaml` | Store catalog |
 | `overlay/usr/bin/foundation-*` | Launcher, Store, Settings, Welcome, App Installer, session |
-| `tools/make-assets.py` | Regenerates logo, icons and wallpaper |
+| `tools/make-assets.py` | Regenerates the circular Foundation emblem, icons and wallpaper |
 
 ## Tested
 

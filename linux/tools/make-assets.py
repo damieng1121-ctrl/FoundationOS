@@ -27,7 +27,46 @@ def logo_png(size, color=(255, 255, 255, 255)):
     return im.resize((size, size), Image.LANCZOS)
 
 
+def round_logo(size, pillar_color=(255, 255, 255, 255)):
+    """The Foundation emblem: a gradient disc with the pillars inside and a soft inner ring."""
+    big = size * S
+    im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    grad = Image.new("RGBA", (big, big))
+    gd = ImageDraw.Draw(grad)
+    top, bot = (0x5B, 0x9A, 0xFF), (0x7A, 0x4F, 0xE0)
+    for yy in range(big):
+        t = yy / big
+        gd.line([(0, yy), (big, yy)], fill=tuple(int(a + (b - a) * t) for a, b in zip(top, bot)) + (255,))
+    mask = Image.new("L", (big, big), 0)
+    pad = big * 0.03
+    ImageDraw.Draw(mask).ellipse([pad, pad, big - pad, big - pad], fill=255)
+    im.paste(grad, (0, 0), mask)
+    ring_layer = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    ring = big * 0.075
+    ImageDraw.Draw(ring_layer).ellipse([ring, ring, big - ring, big - ring], outline=(255, 255, 255, 80),
+                                       width=max(1, int(big * 0.018)))
+    im = Image.alpha_composite(im, ring_layer)
+    d = ImageDraw.Draw(im)
+    logo(d, big * 0.27, big * 0.25, big * 0.46, pillar_color)
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def round_logo_white(size):
+    """Monochrome emblem (white ring + pillars) for dark surfaces such as the boot splash."""
+    big = size * S
+    im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    w = max(2, int(big * 0.045))
+    d.ellipse([w, w, big - w, big - w], outline=(255, 255, 255, 255), width=w)
+    logo(d, big * 0.25, big * 0.23, big * 0.5, (255, 255, 255, 255))
+    return im.resize((size, size), Image.LANCZOS)
+
+
 def app_icon(size):
+    return round_logo(size)
+
+
+def _old_square_icon(size):
     big = size * S
     im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
@@ -64,7 +103,11 @@ def wallpaper(w=1920, h=1080):
     im = Image.composite(Image.new("RGB", (w, h), (0x6E, 0x8F, 0xFF)), im, glow)
     mark = Image.new("L", (w, h), 0)
     s = int(h * 0.26)
-    logo(ImageDraw.Draw(mark), w * 0.55 - s / 2, h * 0.36 - s / 2, s, 34)
+    md = ImageDraw.Draw(mark)
+    r = s * 0.78
+    cx, cy = w * 0.55, h * 0.36
+    md.ellipse([cx - r, cy - r, cx + r, cy + r], outline=34, width=max(2, int(s * 0.03)))
+    logo(md, cx - s * 0.48, cy - s * 0.5, s * 0.96, 34)
     im = Image.composite(Image.new("RGB", (w, h), (255, 255, 255)), im, mark)
     # Horizon line.
     hl = Image.new("L", (w, h), 0)
@@ -76,8 +119,10 @@ def wallpaper(w=1920, h=1080):
 share = os.path.join(OUT, "usr/share/foundation")
 os.makedirs(share, exist_ok=True)
 wallpaper().save(os.path.join(share, "wallpaper.jpg"), quality=92)
-logo_png(256).save(os.path.join(share, "logo-white.png"))
-logo_png(64).save(os.path.join(share, "logo-white-64.png"))
+round_logo_white(256).save(os.path.join(share, "logo-white.png"))
+round_logo_white(64).save(os.path.join(share, "logo-white-64.png"))
+round_logo(512).save(os.path.join(share, "logo-round-512.png"))
+round_logo(96).save(os.path.join(share, "logo-round-96.png"))
 for sz in (16, 22, 24, 32, 48, 64, 128, 256):
     p = os.path.join(OUT, f"usr/share/icons/hicolor/{sz}x{sz}/apps")
     os.makedirs(p, exist_ok=True)

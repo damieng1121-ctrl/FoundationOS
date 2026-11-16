@@ -9,7 +9,7 @@ CONFIG = os.path.join(GLib.get_user_config_dir(), "foundation")
 PINS_FILE = os.path.join(CONFIG, "pinned.json")
 DEFAULT_TASKBAR_PINS = ["thunar.desktop", "org.gnome.Epiphany.desktop", "google-chrome.desktop",
                         "foundation-store.desktop", "org.codeberg.dnkl.foot.desktop"]
-DEFAULT_START_PINS = ["thunar.desktop", "org.gnome.Epiphany.desktop", "google-chrome.desktop",
+DEFAULT_START_PINS = ["foundation-assistant.desktop", "thunar.desktop", "org.gnome.Epiphany.desktop", "google-chrome.desktop",
                       "foundation-store.desktop", "foundation-settings.desktop", "org.xfce.mousepad.desktop",
                       "org.gnome.Calculator.desktop", "org.xfce.ristretto.desktop", "org.gnome.SystemMonitor.desktop",
                       "org.codeberg.dnkl.foot.desktop", "atril.desktop", "vlc.desktop", "fpkg-webapp-microsoft-word.desktop",
