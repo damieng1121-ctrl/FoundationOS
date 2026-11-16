@@ -5,6 +5,7 @@ Foundation is an operating system project with two tracks:
 | Track | What it is | Status |
 |---|---|---|
 | **[Foundation OS](linux/)** (`linux/`) | The everyday OS: Foundation desktop, store, package manager and installer on the Linux kernel (Ubuntu 24.04 LTS base). Runs Chrome, Microsoft 365, Google Drive, Flatpak apps and Windows `.exe`/`.msi` programs. | v0.2, installable ISO |
+| **[Foundation kernel](kernel/)** (`kernel/`) | Foundation's own Linux kernel build: desktop-tuned (full preemption, 1000 Hz), Foundation identity and boot logo, rebuilt weekly from Ubuntu's security-maintained source. | Default kernel of Foundation OS |
 | **[Research kernel](research/)** (`research/`) | A from-scratch x86_64 kernel and GUI written in Rust - our own kernel, window manager and apps. | v0.1, boots in QEMU |
 
 ## Foundation OS (installable)

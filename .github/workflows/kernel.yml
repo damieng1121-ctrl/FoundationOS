@@ -1,0 +1,85 @@
+name: Build Foundation kernel
+
+# Rebuilds the Foundation kernel from Ubuntu 24.04's security-maintained kernel source.
+# Runs weekly so security fixes reach Foundation, and whenever kernel/ changes.
+on:
+  workflow_dispatch:
+    inputs:
+      ubuntu_version:
+        description: "Ubuntu linux source version (e.g. 6.8.0-149.149); empty = latest"
+        required: false
+      force:
+        description: "Rebuild even if a release for this version exists"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 3 * * 1"
+  push:
+    paths: ["kernel/**", ".github/workflows/kernel.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Ubuntu source packages
+        run: |
+          sudo tee /etc/apt/sources.list.d/foundation-src.sources >/dev/null <<'SRC'
+          Types: deb-src
+          URIs: http://archive.ubuntu.com/ubuntu/
+          Suites: noble noble-updates noble-security
+          Components: main
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          SRC
+          sudo apt-get update
+
+      - name: Pick kernel version
+        id: ver
+        run: |
+          v="${{ github.event.inputs.ubuntu_version }}"
+          [ -n "$v" ] || v="$(apt-cache showsrc linux | sed -n 's/^Version: //p' | sort -V | tail -1)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event.inputs.force }}" != "true" ] && [ "${{ github.event_name }}" != "push" ] \
+             && gh release view "kernel-$v" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Foundation kernel for $v already released - nothing to do."
+          fi
+
+      - name: Free disk space and install build tools
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod \
+            zstd dpkg-dev python3-pil
+          df -h / /mnt
+
+      - name: Build
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          sudo mkdir -p /mnt/kwork && sudo chown "$USER" /mnt/kwork
+          WORK=/mnt/kwork ./kernel/build-kernel.sh "${{ steps.ver.outputs.version }}"
+          ls -lh kernel/out
+
+      - name: Upload packages
+        if: steps.ver.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-kernel
+          path: kernel/out/*
+          retention-days: 30
+
+      - name: Publish release
+        if: steps.ver.outputs.skip != 'true'
+        run: |
+          tag="kernel-${{ steps.ver.outputs.version }}"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" kernel/out/*.deb kernel/out/SHA256SUMS --target "$GITHUB_SHA" \
+            --title "Foundation kernel ${{ steps.ver.outputs.version }}" \
+            --notes "Foundation kernel built from Ubuntu linux ${{ steps.ver.outputs.version }} with kernel/foundation.config."

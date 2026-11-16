@@ -2,6 +2,9 @@ name: Build Foundation OS ISO
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build Foundation kernel"]
+    types: [completed]
   push:
     branches: [main, "claude/**"]
     tags: ["v*"]
@@ -12,6 +15,7 @@ permissions:
 
 jobs:
   iso:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -26,6 +30,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mmdebstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools python3-pip
+
+      - name: Fetch the latest Foundation kernel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release list --limit 50 --json tagName --jq '.[].tagName' | grep '^kernel-' | sort -V | tail -1 || true)"
+          if [ -n "$tag" ]; then
+            gh release download "$tag" --pattern 'linux-image-*.deb' --dir linux/kernel-debs
+            echo "Using Foundation kernel $tag"; ls -l linux/kernel-debs
+          else
+            echo "::warning::No Foundation kernel release yet - this ISO uses Ubuntu's stock kernel"
+          fi
 
       - name: Build Foundation Shell helper (Rust)
         run: cargo build --release --manifest-path linux/shell/toplevels/Cargo.toml

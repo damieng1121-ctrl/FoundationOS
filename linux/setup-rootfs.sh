@@ -116,6 +116,13 @@ if [ -d /usr/share/plymouth/themes/spinner ]; then
   cp /usr/share/foundation/logo-white.png /usr/share/plymouth/ubuntu-logo.png 2>/dev/null || true
 fi
 
+# --- Foundation kernel (default boot kernel; Ubuntu's generic kernel stays as a fallback)
+if ls /tmp/foundation-kernel/linux-image-*.deb >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y --no-install-recommends /tmp/foundation-kernel/linux-image-*.deb
+  rm -rf /tmp/foundation-kernel
+fi
+
 # --- Boot: casper initramfs for the live system
 update-initramfs -u -k all
 

@@ -148,7 +148,8 @@ def main():
     box.pack_start(grid, True, True, 0)
     ver = open("/usr/share/foundation/VERSION").read().strip() if os.path.exists("/usr/share/foundation/VERSION") else "?"
     kernel = os.uname().release
-    box.pack_start(ui.css(Gtk.Label(label=f"Foundation OS {ver}  ·  Linux {kernel}", xalign=0), "f-muted"),
+    kname = f"Foundation kernel {kernel}" if "foundation" in kernel else f"Linux {kernel}"
+    box.pack_start(ui.css(Gtk.Label(label=f"Foundation OS {ver}  ·  {kname}", xalign=0), "f-muted"),
                    False, False, 0)
     win.show_all()
     Gtk.main()

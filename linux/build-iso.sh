@@ -86,12 +86,26 @@ vendor_python() {
   find "$ROOT/usr/lib/foundation/vendor" -name "__pycache__" -prune -exec rm -rf {} +
 }
 
+stage_kernel() {
+  # Foundation kernel packages (from kernel/build-kernel.sh or a "kernel-*" GitHub release).
+  local dir="${KERNEL_DEBS:-$HERE/kernel-debs}"
+  rm -rf "$ROOT/tmp/foundation-kernel"
+  if ls "$dir"/linux-image-*foundation*.deb >/dev/null 2>&1; then
+    log "Including the Foundation kernel: $(ls "$dir"/linux-image-*foundation*.deb | xargs -n1 basename)"
+    mkdir -p "$ROOT/tmp/foundation-kernel"
+    cp "$dir"/linux-image-*foundation*.deb "$ROOT/tmp/foundation-kernel/"
+  else
+    log "No Foundation kernel packages in $dir - using Ubuntu's stock kernel"
+  fi
+}
+
 stage_customize() {
   log "Applying Foundation overlay"
   cp -a "$HERE/overlay/." "$ROOT/"
   find "$ROOT/usr/lib/foundation" -name "__pycache__" -prune -exec rm -rf {} +
   build_shell_helper
   vendor_python
+  stage_kernel
   cp "$HERE/VERSION" "$ROOT/usr/share/foundation/VERSION"
   install -m 0755 "$HERE/setup-rootfs.sh" "$ROOT/tmp/setup-rootfs.sh"
   mount_chroot
