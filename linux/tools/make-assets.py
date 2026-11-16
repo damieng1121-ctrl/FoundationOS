@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Foundation OS branding assets (logo, icons, wallpaper) with Pillow."""
+"""Generate Stoa branding assets (logo, icons, wallpaper) with Pillow."""
 import os, sys
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -28,7 +28,7 @@ def logo_png(size, color=(255, 255, 255, 255)):
 
 
 def round_logo(size, pillar_color=(255, 255, 255, 255)):
-    """The Foundation emblem: a gradient disc with the pillars inside and a soft inner ring."""
+    """The Stoa emblem: a gradient disc with the pillars inside and a soft inner ring."""
     big = size * S
     im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     grad = Image.new("RGBA", (big, big))
@@ -116,7 +116,7 @@ def wallpaper(w=1920, h=1080):
     return im
 
 
-share = os.path.join(OUT, "usr/share/foundation")
+share = os.path.join(OUT, "usr/share/stoa")
 os.makedirs(share, exist_ok=True)
 wallpaper().save(os.path.join(share, "wallpaper.jpg"), quality=92)
 round_logo_white(256).save(os.path.join(share, "logo-white.png"))
@@ -126,10 +126,10 @@ round_logo(96).save(os.path.join(share, "logo-round-96.png"))
 for sz in (16, 22, 24, 32, 48, 64, 128, 256):
     p = os.path.join(OUT, f"usr/share/icons/hicolor/{sz}x{sz}/apps")
     os.makedirs(p, exist_ok=True)
-    app_icon(sz).save(os.path.join(p, "foundation.png"))
-app_icon(256).save(os.path.join(share, "foundation-256.png"))
+    app_icon(sz).save(os.path.join(p, "stoa.png"))
+app_icon(256).save(os.path.join(share, "stoa-256.png"))
 # Calamares branding images.
-cb = os.path.join(OUT, "etc/calamares/branding/foundation")
+cb = os.path.join(OUT, "etc/calamares/branding/stoa")
 os.makedirs(cb, exist_ok=True)
 app_icon(128).save(os.path.join(cb, "logo.png"))
 wallpaper(960, 540).save(os.path.join(cb, "welcome.png"))

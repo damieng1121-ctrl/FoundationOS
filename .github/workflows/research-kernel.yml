@@ -15,5 +15,5 @@ jobs:
         run: ./build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: foundation-research-images
+          name: stoa-research-images
           path: research/target/*.img

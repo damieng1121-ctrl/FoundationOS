@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to Stoa
+Comment=Get started with Stoa
+Icon=stoa
+Exec=stoa-welcome
+Categories=System;
+Terminal=false

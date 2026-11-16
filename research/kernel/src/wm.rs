@@ -1,4 +1,4 @@
-//! Foundation window manager and desktop shell: wallpaper, icons, windows, taskbar,
+//! Stoa window manager and desktop shell: wallpaper, icons, windows, taskbar,
 //! start menu and the mouse cursor.
 use crate::apps::{self, App, AppKind, Key};
 use crate::gfx::*;
@@ -374,7 +374,7 @@ impl Desktop {
         let cx = self.w / 2 + 60;
         let cy = h / 2 - 40;
         draw_logo(c, cx - 70, cy - 70, 140, 0xFFFFFF, 28);
-        let word = "F O U N D A T I O N";
+        let word = "S T O A";
         let ww = text_width(word, FONT_LARGE);
         for (i, ch) in word.chars().enumerate() {
             draw_char_alpha(c, cx - ww / 2 + i as i32 * FONT_LARGE.cw(), cy + 92, ch, 60);
@@ -391,7 +391,7 @@ impl Desktop {
         let hot = self.menu_open || sb.contains(self.mx, self.my);
         c.fill_round_rect(sb.x, sb.y, sb.w, sb.h, 8, if hot { 0x3B6FE0 } else { ACCENT });
         draw_logo(c, sb.x + 10, sb.y + 5, 22, 0xFFFFFF, 255);
-        c.text(sb.x + 40, sb.y + (sb.h - 16) / 2, "Foundation", FONT_BOLD, 0xFFFFFF);
+        c.text(sb.x + 40, sb.y + (sb.h - 16) / 2, "Stoa", FONT_BOLD, 0xFFFFFF);
 
         // Window buttons.
         for (i, w) in self.windows.iter().enumerate() {
@@ -429,7 +429,7 @@ impl Desktop {
         c.fill_round_rect(m.x, m.y, m.w, MENU_HEADER_H, 12, 0x24304A);
         c.fill_rect(m.x, m.y + MENU_HEADER_H - 12, m.w, 12, 0x24304A);
         draw_logo(c, m.x + 14, m.y + 14, 36, 0xFFFFFF, 255);
-        c.text(m.x + 62, m.y + 12, "Foundation OS", FONT_MED, 0xFFFFFF);
+        c.text(m.x + 62, m.y + 12, "Stoa", FONT_MED, 0xFFFFFF);
         c.text(m.x + 62, m.y + 36, "version 0.1", FONT, 0x9AA8C7);
         for (i, kind) in apps::ALL.iter().enumerate() {
             let y = m.y + MENU_HEADER_H + i as i32 * MENU_ITEM_H;
@@ -464,7 +464,7 @@ fn draw_char_alpha(c: &mut Canvas, x: i32, y: i32, ch: char, alpha: u32) {
     }
 }
 
-/// The Foundation logo: a pediment over three columns on a stepped base.
+/// The Stoa logo: a pediment over three columns on a stepped base.
 pub fn draw_logo(c: &mut Canvas, x: i32, y: i32, size: i32, color: Color, alpha: u32) {
     let s = size;
     let part = |c: &mut Canvas, rx: i32, ry: i32, rw: i32, rh: i32| {

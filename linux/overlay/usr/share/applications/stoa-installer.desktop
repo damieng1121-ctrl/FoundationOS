@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install Stoa
+Comment=Install Stoa on this computer
+Icon=stoa
+Exec=stoa-installer
+Categories=System;
+Terminal=false
+OnlyShowIn=Stoa;

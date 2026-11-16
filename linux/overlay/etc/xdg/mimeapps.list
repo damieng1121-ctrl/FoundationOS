@@ -1,12 +1,12 @@
 [Default Applications]
-application/x-foundation-package=foundation-app-installer.desktop
-application/x-ms-dos-executable=foundation-app-installer.desktop
-application/x-msdownload=foundation-app-installer.desktop
-application/vnd.microsoft.portable-executable=foundation-app-installer.desktop
-application/x-msi=foundation-app-installer.desktop
-application/x-ole-storage=foundation-app-installer.desktop
-application/vnd.debian.binary-package=foundation-app-installer.desktop
-application/vnd.appimage=foundation-app-installer.desktop
+application/x-stoa-package=stoa-app-installer.desktop
+application/x-ms-dos-executable=stoa-app-installer.desktop
+application/x-msdownload=stoa-app-installer.desktop
+application/vnd.microsoft.portable-executable=stoa-app-installer.desktop
+application/x-msi=stoa-app-installer.desktop
+application/x-ole-storage=stoa-app-installer.desktop
+application/vnd.debian.binary-package=stoa-app-installer.desktop
+application/vnd.appimage=stoa-app-installer.desktop
 text/html=org.gnome.Epiphany.desktop
 x-scheme-handler/http=org.gnome.Epiphany.desktop
 x-scheme-handler/https=org.gnome.Epiphany.desktop

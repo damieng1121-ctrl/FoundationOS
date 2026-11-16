@@ -1,7 +1,7 @@
-name: Build Foundation kernel
+name: Build Stoa kernel
 
-# Rebuilds the Foundation kernel from Ubuntu 24.04's security-maintained kernel source.
-# Runs weekly so security fixes reach Foundation, and whenever kernel/ changes.
+# Rebuilds the Stoa kernel from Ubuntu 24.04's security-maintained kernel source.
+# Runs weekly so security fixes reach Stoa, and whenever kernel/ changes.
 on:
   workflow_dispatch:
     inputs:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Enable Ubuntu source packages
         run: |
-          sudo tee /etc/apt/sources.list.d/foundation-src.sources >/dev/null <<'SRC'
+          sudo tee /etc/apt/sources.list.d/stoa-src.sources >/dev/null <<'SRC'
           Types: deb-src
           URIs: http://archive.ubuntu.com/ubuntu/
           Suites: noble noble-updates noble-security
@@ -49,7 +49,7 @@ jobs:
           if [ "${{ github.event.inputs.force }}" != "true" ] && [ "${{ github.event_name }}" != "push" ] \
              && gh release view "kernel-$v" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Foundation kernel for $v already released - nothing to do."
+            echo "Stoa kernel for $v already released - nothing to do."
           fi
 
       - name: Free disk space and install build tools
@@ -71,7 +71,7 @@ jobs:
         if: steps.ver.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: foundation-kernel
+          name: stoa-kernel
           path: kernel/out/*
           retention-days: 30
 
@@ -81,5 +81,5 @@ jobs:
           tag="kernel-${{ steps.ver.outputs.version }}"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$tag" kernel/out/*.deb kernel/out/SHA256SUMS --target "$GITHUB_SHA" \
-            --title "Foundation kernel ${{ steps.ver.outputs.version }}" \
-            --notes "Foundation kernel built from Ubuntu linux ${{ steps.ver.outputs.version }} with kernel/foundation.config."
+            --title "Stoa kernel ${{ steps.ver.outputs.version }}" \
+            --notes "Stoa kernel built from Ubuntu linux ${{ steps.ver.outputs.version }} with kernel/stoa.config."

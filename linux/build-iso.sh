@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the Foundation OS live/installer ISO.
+# Build the Stoa live/installer ISO.
 #
-#   sudo ./build-iso.sh            # full build -> out/foundation-<version>-amd64.iso
+#   sudo ./build-iso.sh            # full build -> out/stoa-<version>-amd64.iso
 #   sudo ./build-iso.sh rootfs     # only (re)create the base root filesystem
 #   sudo ./build-iso.sh customize  # re-apply overlay/ and setup to the cached rootfs
 #   sudo ./build-iso.sh iso        # only pack squashfs + ISO
@@ -19,7 +19,7 @@ SUITE=noble
 VERSION="$(cat "$HERE/VERSION")"
 ROOT="$WORK/rootfs"
 ISO="$WORK/iso"
-ISO_NAME="foundation-${VERSION}-amd64.iso"
+ISO_NAME="stoa-${VERSION}-amd64.iso"
 
 log() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 
@@ -64,54 +64,54 @@ stage_rootfs() {
 }
 
 build_shell_helper() {
-  # foundation-toplevels (Rust): tells the taskbar which windows are open.
-  local dir="$HERE/shell/toplevels" bin="$HERE/shell/toplevels/target/release/foundation-toplevels"
+  # stoa-toplevels (Rust): tells the taskbar which windows are open.
+  local dir="$HERE/shell/toplevels" bin="$HERE/shell/toplevels/target/release/stoa-toplevels"
   if command -v cargo >/dev/null 2>&1; then
-    log "Building foundation-toplevels"
+    log "Building stoa-toplevels"
     (cd "$dir" && cargo build --release)
   fi
-  [[ -x "$bin" ]] || { echo "foundation-toplevels is not built: install Rust (https://rustup.rs) and re-run" >&2; exit 1; }
-  install -D -m 0755 "$bin" "$ROOT/usr/lib/foundation/foundation-toplevels"
+  [[ -x "$bin" ]] || { echo "stoa-toplevels is not built: install Rust (https://rustup.rs) and re-run" >&2; exit 1; }
+  install -D -m 0755 "$bin" "$ROOT/usr/lib/stoa/stoa-toplevels"
 }
 
 vendor_python() {
-  # Foundation AI: the Anthropic Python SDK, private to Foundation (system Python packages untouched).
+  # Stoa AI: the Anthropic Python SDK, private to Stoa (system Python packages untouched).
   # Downloaded on the build host as wheels for the image's Python (3.12, x86_64).
-  log "Installing the Anthropic SDK for Foundation AI"
-  rm -rf "$ROOT/usr/lib/foundation/vendor"
+  log "Installing the Anthropic SDK for Stoa AI"
+  rm -rf "$ROOT/usr/lib/stoa/vendor"
   python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check \
-    --target "$ROOT/usr/lib/foundation/vendor" --python-version 3.12 --implementation cp \
+    --target "$ROOT/usr/lib/stoa/vendor" --python-version 3.12 --implementation cp \
     --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --only-binary=:all: \
     "anthropic==2.8.0"
-  find "$ROOT/usr/lib/foundation/vendor" -name "__pycache__" -prune -exec rm -rf {} +
+  find "$ROOT/usr/lib/stoa/vendor" -name "__pycache__" -prune -exec rm -rf {} +
 }
 
 stage_kernel() {
-  # Foundation kernel packages (from kernel/build-kernel.sh or a "kernel-*" GitHub release).
+  # Stoa kernel packages (from kernel/build-kernel.sh or a "kernel-*" GitHub release).
   local dir="${KERNEL_DEBS:-$HERE/kernel-debs}"
-  rm -rf "$ROOT/tmp/foundation-kernel"
-  if ls "$dir"/linux-image-*foundation*.deb >/dev/null 2>&1; then
-    log "Including the Foundation kernel: $(ls "$dir"/linux-image-*foundation*.deb | xargs -n1 basename)"
-    mkdir -p "$ROOT/tmp/foundation-kernel"
-    cp "$dir"/linux-image-*foundation*.deb "$ROOT/tmp/foundation-kernel/"
+  rm -rf "$ROOT/tmp/stoa-kernel"
+  if ls "$dir"/linux-image-*stoa*.deb >/dev/null 2>&1; then
+    log "Including the Stoa kernel: $(ls "$dir"/linux-image-*stoa*.deb | xargs -n1 basename)"
+    mkdir -p "$ROOT/tmp/stoa-kernel"
+    cp "$dir"/linux-image-*stoa*.deb "$ROOT/tmp/stoa-kernel/"
   else
-    log "No Foundation kernel packages in $dir - using Ubuntu's stock kernel"
+    log "No Stoa kernel packages in $dir - using Ubuntu's stock kernel"
   fi
 }
 
 stage_customize() {
-  log "Applying Foundation overlay"
+  log "Applying Stoa overlay"
   cp -a "$HERE/overlay/." "$ROOT/"
-  find "$ROOT/usr/lib/foundation" -name "__pycache__" -prune -exec rm -rf {} +
+  find "$ROOT/usr/lib/stoa" -name "__pycache__" -prune -exec rm -rf {} +
   build_shell_helper
   vendor_python
   stage_kernel
-  cp "$HERE/VERSION" "$ROOT/usr/share/foundation/VERSION"
+  cp "$HERE/VERSION" "$ROOT/usr/share/stoa/VERSION"
   install -m 0755 "$HERE/setup-rootfs.sh" "$ROOT/tmp/setup-rootfs.sh"
   mount_chroot
   log "Configuring the system inside the chroot"
   chroot "$ROOT" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 \
-    FOUNDATION_VERSION="$VERSION" /tmp/setup-rootfs.sh
+    STOA_VERSION="$VERSION" /tmp/setup-rootfs.sh
   rm -f "$ROOT/tmp/setup-rootfs.sh"
   umount_chroot
 }
@@ -138,14 +138,14 @@ stage_iso() {
   mksquashfs "$ROOT" "$ISO/casper/filesystem.squashfs" -noappend "${comp[@]}" \
     -e boot/efi -wildcards -e 'proc/*' -e 'sys/*' -e 'dev/*' -e 'run/*' -e 'tmp/*'
 
-  echo "Foundation OS $VERSION \"Bedrock\" - amd64 ($(date -u +%Y%m%d))" > "$ISO/.disk/info"
+  echo "Stoa $VERSION \"Bedrock\" - amd64 ($(date -u +%Y%m%d))" > "$ISO/.disk/info"
   cp "$HERE/iso/grub.cfg" "$ISO/boot/grub/grub.cfg"
   sed -i "s/@VERSION@/$VERSION/g" "$ISO/boot/grub/grub.cfg"
   mkdir -p "$ISO/boot/grub/themes"
-  cp -a "$HERE/iso/theme" "$ISO/boot/grub/themes/foundation" 2>/dev/null || true
+  cp -a "$HERE/iso/theme" "$ISO/boot/grub/themes/stoa" 2>/dev/null || true
 
   log "Creating hybrid BIOS/UEFI ISO"
-  grub-mkrescue -o "$OUT/$ISO_NAME" "$ISO" -- -volid FOUNDATION_OS
+  grub-mkrescue -o "$OUT/$ISO_NAME" "$ISO" -- -volid STOA_OS
   (cd "$OUT" && sha256sum "$ISO_NAME" > "$ISO_NAME.sha256")
   log "Done: $OUT/$ISO_NAME ($(du -h "$OUT/$ISO_NAME" | cut -f1))"
 }

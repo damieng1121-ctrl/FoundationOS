@@ -1,10 +1,10 @@
 [package]
-name = "foundation-kernel"
+name = "stoa-kernel"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "foundation-kernel"
+name = "stoa-kernel"
 test = false
 bench = false
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the Foundation emblem as the kernel's boot logo (80x80, at most 224 colours, plain PPM)."""
+"""Render the Stoa emblem as the kernel's boot logo (80x80, at most 224 colours, plain PPM)."""
 import sys
 
 from PIL import Image
@@ -11,6 +11,6 @@ im = Image.alpha_composite(bg, im).convert("RGB").quantize(colors=224).convert("
 w, h = im.size
 px = list(im.getdata())
 with open(out, "w") as f:
-    f.write(f"P3\n# Foundation OS\n{w} {h}\n255\n")
+    f.write(f"P3\n# Stoa\n{w} {h}\n255\n")
     for i in range(0, len(px), 4):
         f.write("  ".join(f"{r:3d} {g:3d} {b:3d}" for r, g, b in px[i:i + 4]) + "\n")

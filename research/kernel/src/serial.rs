@@ -60,7 +60,7 @@ pub fn _print(args: fmt::Arguments) {
 #[macro_export]
 macro_rules! klog {
     ($($arg:tt)*) => {{
-        $crate::serial::_print(format_args!("[foundation] {}\n", format_args!($($arg)*)));
+        $crate::serial::_print(format_args!("[stoa] {}\n", format_args!($($arg)*)));
         $crate::sys::push_log(format_args!($($arg)*));
     }};
 }

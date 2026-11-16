@@ -1,23 +1,30 @@
-# Foundation OS
+# Stoa
 
-Foundation is an operating system project with two tracks:
+**The computer that builds what you need.**
+
+A *stoa* was the covered colonnade at the heart of an ancient Greek city: a public place built to serve the
+people inside it, where they met, traded and learned (the Stoic philosophers took their name from one in
+Athens). Stoa the operating system has the same aim: a calm, trustworthy computer that works for the person
+using it, and builds what they need when they ask.
+
+Stoa has three tracks:
 
 | Track | What it is | Status |
 |---|---|---|
-| **[Foundation OS](linux/)** (`linux/`) | The everyday OS: Foundation desktop, store, package manager and installer on the Linux kernel (Ubuntu 24.04 LTS base). Runs Chrome, Microsoft 365, Google Drive, Flatpak apps and Windows `.exe`/`.msi` programs. | v0.2, installable ISO |
-| **[Foundation kernel](kernel/)** (`kernel/`) | Foundation's own Linux kernel build: desktop-tuned (full preemption, 1000 Hz), Foundation identity and boot logo, rebuilt weekly from Ubuntu's security-maintained source. | Default kernel of Foundation OS |
+| **[Stoa](linux/)** (`linux/`) | The everyday OS: Stoa desktop, store, package manager and installer on the Linux kernel (Ubuntu 24.04 LTS base). Runs Chrome, Microsoft 365, Google Drive, Flatpak apps and Windows `.exe`/`.msi` programs. | v0.2, installable ISO |
+| **[Stoa kernel](kernel/)** (`kernel/`) | Stoa's own Linux kernel build: desktop-tuned (full preemption, 1000 Hz), Stoa identity and boot logo, rebuilt weekly from Ubuntu's security-maintained source. | Default kernel of Stoa |
 | **[Research kernel](research/)** (`research/`) | A from-scratch x86_64 kernel and GUI written in Rust - our own kernel, window manager and apps. | v0.1, boots in QEMU |
 
-## Foundation OS (installable)
+## Stoa (installable)
 
 - **Bootable ISO** with a live session and a graphical installer (Calamares): BIOS + UEFI, ext4/btrfs/xfs, full-disk or manual partitioning.
-- **Foundation desktop**: labwc compositor, Foundation taskbar and start menu, Foundation Store, Settings, welcome app.
+- **Stoa desktop**: labwc compositor, Stoa taskbar and start menu, Stoa Store, Settings, welcome app.
 - **`fpkg`**, one package manager for everything:
-  - `fpkg install google-chrome` / `microsoft-365` / `google-drive` / `zoom` / ... (39-app catalog: vendor apt repos, Flathub, web apps)
-  - `fpkg install setup.exe` / `installer.msi` - Windows programs, each in its own Wine "bottle", added to the menu
-  - `fpkg pack setup.exe --name "My App" --args /S` - wrap any Windows installer as a `.fpkg` Foundation package
-  - `fpkg install app.fpkg | file.deb | App.AppImage | flatpak:<id>`
-  - `fpkg update` - OS, apps, Flatpaks and Foundation packages; security updates also install automatically
+  - `stoa install google-chrome` / `microsoft-365` / `google-drive` / `zoom` / ... (39-app catalog: vendor apt repos, Flathub, web apps)
+  - `stoa install setup.exe` / `installer.msi` - Windows programs, each in its own Wine "bottle", added to the menu
+  - `stoa pack setup.exe --name "My App" --args /S` - wrap any Windows installer as a `.fpkg` Stoa package
+  - `stoa install app.fpkg | file.deb | App.AppImage | flatpak:<id>`
+  - `stoa update` - OS, apps, Flatpaks and Stoa packages; security updates also install automatically
 - **Networking**: NetworkManager (Ethernet, Wi-Fi, VPN), Bluetooth, PipeWire audio.
 - **VM friendly**: guest tools for QEMU/KVM, VirtualBox and VMware.
 
@@ -25,7 +32,7 @@ See **[linux/README.md](linux/README.md)** for downloading the ISO, testing it i
 
 ## Research kernel
 
-![Foundation research kernel desktop](docs/desktop-paint.png)
+![Stoa research kernel desktop](docs/desktop-paint.png)
 
 ### What's in v0.1 "Bedrock"
 
@@ -36,7 +43,7 @@ See **[linux/README.md](linux/README.md)** for downloading the ISO, testing it i
 - 4-level paging, physical frame allocator, 48 MiB kernel heap
 - PS/2 keyboard and mouse drivers (lock-free IRQ → main-loop queues)
 - Serial console logging (COM1) and an in-memory kernel log (`dmesg`)
-- FoundationFS: a flat in-memory filesystem
+- StoaFS: a flat in-memory filesystem
 
 **Desktop shell**
 - Compositing window manager: drag, focus, minimise, close, drop shadows
@@ -57,7 +64,7 @@ Requirements: [rustup](https://rustup.rs) (the pinned nightly toolchain installs
 cd research
 ./run.sh          # build + boot in QEMU (BIOS)
 ./run.sh --uefi   # boot via OVMF instead
-./build.sh        # only build target/foundation-{bios,uefi}.img
+./build.sh        # only build target/stoa-{bios,uefi}.img
 ```
 
 The disk images can also be written to a USB stick and booted on real hardware that supports PS/2 emulation (most PCs do for USB keyboards/mice via legacy mode).
@@ -76,7 +83,7 @@ research/kernel/src/
   gfx.rs          canvas, primitives, text, framebuffer output
   wm.rs           window manager, taskbar, start menu
   apps.rs         built-in applications
-  fs.rs           FoundationFS (in memory)
+  fs.rs           StoaFS (in memory)
   sys.rs          system state, power, CPU info
 research/builder/ turns the kernel ELF into bootable disk images
 ```

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Foundation AI
-Comment=Ask for anything - or have it build an app for you
-Icon=foundation
-Exec=foundation-assistant
-Categories=Utility;
-Keywords=ai;assistant;claude;build;app;help;
-Terminal=false

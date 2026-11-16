@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Stoa
+Comment=Stoa desktop
+Exec=stoa-session
+Type=Application
+DesktopNames=Stoa;wlroots

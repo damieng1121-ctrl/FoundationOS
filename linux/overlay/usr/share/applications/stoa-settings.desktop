@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Comment=Stoa settings
+Icon=preferences-system
+Exec=stoa-settings
+Categories=Settings;
+Terminal=false

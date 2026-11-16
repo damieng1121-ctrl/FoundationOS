@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Stoa Store
+Comment=Get apps: browsers, Office, Windows programs and more
+Icon=stoa
+Exec=stoa-store
+Categories=System;PackageManager;
+Terminal=false

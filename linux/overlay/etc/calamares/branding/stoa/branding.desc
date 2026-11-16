@@ -1,0 +1,37 @@
+---
+componentName: stoa
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 920px,620px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+  productName: Stoa
+  shortProductName: Stoa
+  version: 0.2.0
+  shortVersion: "0.2"
+  versionedName: Stoa 0.2 "Bedrock"
+  shortVersionedName: Stoa 0.2
+  bootloaderEntryName: Stoa
+  productUrl: https://github.com/damieng1121-ctrl/foundationos
+  supportUrl: https://github.com/damieng1121-ctrl/foundationos/issues
+  knownIssuesUrl: https://github.com/damieng1121-ctrl/foundationos/issues
+  releaseNotesUrl: https://github.com/damieng1121-ctrl/foundationos
+  donateUrl: https://github.com/damieng1121-ctrl/foundationos
+
+images:
+  productLogo: "logo.png"
+  productIcon: "logo.png"
+  productWelcome: "welcome.png"
+
+slideshow: "show.qml"
+slideshowAPI: 2
+
+style:
+  SidebarBackground: "#1a2238"
+  SidebarText: "#ffffff"
+  SidebarTextCurrent: "#ffffff"
+  SidebarBackgroundCurrent: "#4f8cff"

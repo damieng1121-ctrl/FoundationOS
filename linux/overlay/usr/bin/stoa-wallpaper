@@ -1,0 +1,4 @@
+#!/bin/sh
+# Print the wallpaper path (user choice in ~/.config/stoa/wallpaper, else the default).
+f="${XDG_CONFIG_HOME:-$HOME/.config}/stoa/wallpaper"
+if [ -f "$f" ] && [ -f "$(cat "$f")" ]; then cat "$f"; else echo /usr/share/stoa/wallpaper.jpg; fi

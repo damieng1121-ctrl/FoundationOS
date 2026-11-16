@@ -1,3 +1,0 @@
-#!/bin/sh
-# Install all updates in a terminal window, then refresh the taskbar indicator.
-exec foot --title "Foundation Updates" sh -c 'fpkg update; echo; echo "Press Enter to close"; read _'

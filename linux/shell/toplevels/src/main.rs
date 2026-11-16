@@ -1,5 +1,5 @@
-//! foundation-toplevels: bridge between the compositor's window list
-//! (wlr-foreign-toplevel-management) and Foundation Shell.
+//! stoa-toplevels: bridge between the compositor's window list
+//! (wlr-foreign-toplevel-management) and Stoa Shell.
 //!
 //! stdout: one JSON object per line
 //!   {"ev":"update","id":3,"app_id":"thunar","title":"Home","active":true,"minimized":false,"maximized":false}

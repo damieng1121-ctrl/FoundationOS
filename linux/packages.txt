@@ -1,4 +1,4 @@
-# Foundation OS package set (Ubuntu 24.04 "noble" base). One package per line.
+# Stoa package set (Ubuntu 24.04 "noble" base). One package per line.
 
 # --- Base system
 ubuntu-minimal
@@ -39,7 +39,7 @@ gdisk
 squashfs-tools
 plymouth-theme-spinner
 
-# --- Graphics stack and Foundation desktop
+# --- Graphics stack and Stoa desktop
 labwc
 xwayland
 libgl1-mesa-dri
@@ -78,7 +78,7 @@ xdg-desktop-portal-wlr
 xdg-desktop-portal-gtk
 xdg-utils
 zenity
-# Foundation AI: runtime for apps it builds
+# Stoa AI: runtime for apps it builds
 gir1.2-webkit2-4.1
 
 # --- Apps

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Software Updates
+Comment=Install updates for Stoa and your apps
+Icon=system-software-update
+Exec=stoa-updates
+Categories=System;
+Terminal=false

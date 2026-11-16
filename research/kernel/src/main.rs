@@ -1,4 +1,4 @@
-//! Foundation OS kernel entry point.
+//! Stoa kernel entry point.
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
@@ -39,7 +39,7 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     serial::init();
-    klog!("Foundation OS 0.1 booting");
+    klog!("Stoa 0.1 booting");
 
     gdt::init();
     interrupts::init_idt();

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""fpkg - the Foundation OS package manager.
+"""stoa (also fpkg) - the Stoa package manager.
 
-One front end for every way software reaches Foundation:
+One front end for every way software reaches Stoa:
 
-  catalog apps   fpkg install google-chrome          (apt repos, Flatpak, web apps, Windows apps)
-  Windows apps   fpkg install ~/Downloads/setup.exe   (.exe / .msi, each in its own Wine "bottle")
-  bundles        fpkg install app.fpkg               (Foundation package format, see `fpkg pack`)
-  Linux pkgs     fpkg install ./thing.deb | ./App.AppImage | flatpak:org.gimp.GIMP | apt:vlc
-  updates        fpkg update                          (OS + apt + Flatpak + bundles)
+  catalog apps   stoa install google-chrome          (apt repos, Flatpak, web apps, Windows apps)
+  Windows apps   stoa install ~/Downloads/setup.exe   (.exe / .msi, each in its own Wine "bottle")
+  bundles        stoa install app.fpkg               (Stoa package format, see `fpkg pack`)
+  Linux pkgs     stoa install ./thing.deb | ./App.AppImage | flatpak:org.gimp.GIMP | apt:vlc
+  updates        stoa update                          (OS + apt + Flatpak + bundles)
 """
 import argparse
 import datetime
@@ -26,16 +26,16 @@ import urllib.request
 
 import yaml
 
-CATALOG = os.environ.get("FPKG_CATALOG", "/usr/share/foundation/catalog.yaml")
-HELPER = "/usr/lib/foundation/fpkg-helper"
+CATALOG = os.environ.get("FPKG_CATALOG", "/usr/share/stoa/catalog.yaml")
+HELPER = "/usr/lib/stoa/fpkg-helper"
 HOME = os.path.expanduser("~")
-DATA = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "foundation")
+DATA = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "stoa")
 STATE = os.path.join(DATA, "fpkg", "installed.json")
 BOTTLES = os.path.join(DATA, "bottles")
 APPS_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "applications")
 APPIMAGES = os.path.join(HOME, "Applications")
 FLATHUB = "https://dl.flathub.org/repo/flathub.flatpakrepo"
-UA = "fpkg/0.2 (Foundation OS)"
+UA = "fpkg/0.2 (Stoa)"
 
 C = {"b": "\033[1m", "g": "\033[32m", "y": "\033[33m", "r": "\033[31m", "c": "\033[36m", "0": "\033[0m"}
 if not sys.stdout.isatty():
@@ -143,7 +143,7 @@ def write_desktop(file_id, name, exec_line, icon="application-x-executable", com
         f.write(
             "[Desktop Entry]\nType=Application\n"
             f"Name={name}\nComment={comment}\nExec={exec_line}\nIcon={icon}\n"
-            f"Terminal=false\nX-Foundation-Package={file_id}\n{extra}"
+            f"Terminal=false\nX-Stoa-Package={file_id}\n{extra}"
         )
     os.chmod(path, 0o755)
     if have("update-desktop-database"):
@@ -190,7 +190,7 @@ def install_webapp(app):
     write_desktop(
         f"fpkg-webapp-{app['id']}",
         app["name"],
-        f"foundation-webapp {app['id']} {app['url']}",
+        f"stoa-webapp {app['id']} {app['url']}",
         icon=app.get("icon", "web-browser"),
         comment=app.get("description", ""),
         extra=f"Categories={app.get('desktop_category', 'Network')};\nStartupWMClass=fpkg-{app['id']}\n",
@@ -345,7 +345,7 @@ def install_windows(installer, app_id=None, name=None, args=None, exec_path=None
     st.update(extra_state or {})
     record(app_id, **st)
     if shortcuts or launcher:
-        ok(f"{name} installed - find it in the Foundation menu")
+        ok(f"{name} installed - find it in the Stoa menu")
     else:
         print(f"{C['y']}!{C['0']} {name}: installer finished but no program was found. "
               f"Use `fpkg run --bottle {app_id} <file.exe>` to run something inside it.")
@@ -401,7 +401,7 @@ def read_bundle(path):
     with tarfile.open(path, "r:*") as t:
         m = t.extractfile("fpkg.json")
         if not m:
-            die("not a Foundation package (fpkg.json missing)")
+            die("not a Stoa package (fpkg.json missing)")
         return json.load(m)
 
 
@@ -608,12 +608,12 @@ def check_bundle_updates():
 
 
 def update(args):
-    say("Updating Foundation OS and system packages")
+    say("Updating Stoa and system packages")
     root_helper("upgrade")
     if have("flatpak"):
         say("Updating Flatpak apps")
         run(["flatpak", "--user", "update", "-y", "--noninteractive"], check=False)
-    say("Checking Foundation packages for updates")
+    say("Checking Stoa packages for updates")
     for app_id, info, latest in check_bundle_updates():
         say(f"Updating {info['name']} {info.get('version')} -> {latest['version']}")
         with tempfile.TemporaryDirectory() as td:
@@ -681,7 +681,7 @@ def cmd_info(args):
 
 
 def main():
-    p = argparse.ArgumentParser(prog="fpkg", description="Foundation OS package manager")
+    p = argparse.ArgumentParser(prog=os.path.basename(sys.argv[0]) or "stoa", description="Stoa package manager")
     sp = p.add_subparsers(dest="cmd", required=True)
     s = sp.add_parser("install", help="install apps, files or URLs")
     s.add_argument("targets", nargs="+")

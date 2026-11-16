@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Stoa (compatibility graphics)
+Comment=Stoa desktop for computers without a supported graphics driver
+Exec=stoa-session --x11
+Type=Application
+DesktopNames=Stoa;wlroots

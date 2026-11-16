@@ -1,0 +1,10 @@
+[Unit]
+Description=Stoa: refresh software update information
+After=network-online.target
+Wants=network-online.target
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/stoa/fpkg-helper refresh
+Nice=10

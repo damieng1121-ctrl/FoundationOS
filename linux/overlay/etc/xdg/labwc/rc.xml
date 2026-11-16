@@ -5,7 +5,7 @@
     <gap>6</gap>
   </core>
   <theme>
-    <name>Foundation</name>
+    <name>Stoa</name>
     <cornerRadius>8</cornerRadius>
     <font place="ActiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
     <font place="InactiveWindow"><name>Inter</name><size>10</size><weight>bold</weight></font>
@@ -18,22 +18,22 @@
   <keyboard>
     <default />
     <!-- Windows-style shortcuts -->
-    <keybind key="W-space"><action name="Execute"><command>foundation-shell start</command></action></keybind>
-    <keybind key="C-Escape"><action name="Execute"><command>foundation-shell start</command></action></keybind>
-    <keybind key="W-s"><action name="Execute"><command>foundation-shell search</command></action></keybind>
-    <keybind key="W-a"><action name="Execute"><command>foundation-shell quick</command></action></keybind>
-    <keybind key="W-n"><action name="Execute"><command>foundation-shell calendar</command></action></keybind>
-    <keybind key="W-r"><action name="Execute"><command>foundation-shell run</command></action></keybind>
+    <keybind key="W-space"><action name="Execute"><command>stoa-shell start</command></action></keybind>
+    <keybind key="C-Escape"><action name="Execute"><command>stoa-shell start</command></action></keybind>
+    <keybind key="W-s"><action name="Execute"><command>stoa-shell search</command></action></keybind>
+    <keybind key="W-a"><action name="Execute"><command>stoa-shell quick</command></action></keybind>
+    <keybind key="W-n"><action name="Execute"><command>stoa-shell calendar</command></action></keybind>
+    <keybind key="W-r"><action name="Execute"><command>stoa-shell run</command></action></keybind>
     <keybind key="W-e"><action name="Execute"><command>thunar</command></action></keybind>
-    <keybind key="W-c"><action name="Execute"><command>foundation-assistant</command></action></keybind>
-    <keybind key="W-i"><action name="Execute"><command>foundation-settings</command></action></keybind>
-    <keybind key="W-l"><action name="Execute"><command>foundation-lock</command></action></keybind>
+    <keybind key="W-c"><action name="Execute"><command>stoa-assistant</command></action></keybind>
+    <keybind key="W-i"><action name="Execute"><command>stoa-settings</command></action></keybind>
+    <keybind key="W-l"><action name="Execute"><command>stoa-lock</command></action></keybind>
     <keybind key="C-S-Escape"><action name="Execute"><command>gnome-system-monitor</command></action></keybind>
     <keybind key="C-A-Delete"><action name="Execute"><command>gnome-system-monitor</command></action></keybind>
     <keybind key="W-Return"><action name="Execute"><command>foot</command></action></keybind>
     <keybind key="C-A-t"><action name="Execute"><command>foot</command></action></keybind>
-    <keybind key="Print"><action name="Execute"><command>foundation-screenshot full</command></action></keybind>
-    <keybind key="W-S-s"><action name="Execute"><command>foundation-screenshot area</command></action></keybind>
+    <keybind key="Print"><action name="Execute"><command>stoa-screenshot full</command></action></keybind>
+    <keybind key="W-S-s"><action name="Execute"><command>stoa-screenshot area</command></action></keybind>
     <keybind key="XF86AudioRaiseVolume"><action name="Execute"><command>wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+</command></action></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute"><command>wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-</command></action></keybind>
     <keybind key="XF86AudioMute"><action name="Execute"><command>wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle</command></action></keybind>

@@ -1,4 +1,4 @@
-//! Built-in Foundation applications.
+//! Built-in Stoa applications.
 use crate::fs;
 use crate::gfx::*;
 use crate::mathx::{cos, sin};
@@ -169,7 +169,7 @@ fn blink() -> bool {
 
 // =================================================================== Terminal
 
-const PROMPT: &str = "foundation:/$ ";
+const PROMPT: &str = "stoa:/$ ";
 const T_FG: Color = 0xD6DEEB;
 const T_GREEN: Color = 0x7EE787;
 const T_BLUE: Color = 0x79C0FF;
@@ -188,7 +188,7 @@ pub struct Terminal {
 impl Terminal {
     pub fn new() -> Self {
         let mut t = Self { lines: Vec::new(), input: String::new(), history: Vec::new(), hist_pos: 0, blink: true, exit: false };
-        t.out("Foundation OS 0.1 - Rust x86_64 kernel", T_BLUE);
+        t.out("Stoa 0.1 - Rust x86_64 kernel", T_BLUE);
         t.out("Type 'help' for a list of commands.", T_FG);
         t.out("", T_FG);
         t
@@ -317,10 +317,10 @@ neofetch          system summary\n  dmesg             kernel log\n  reboot | shu
                 let (used, size) = crate::allocator::stats();
                 let w = sys::SCREEN_W.load(core::sync::atomic::Ordering::Relaxed);
                 let h = sys::SCREEN_H.load(core::sync::atomic::Ordering::Relaxed);
-                self.out("     /\\        foundation@foundation", T_BLUE);
+                self.out("     /\\        stoa@stoa", T_BLUE);
                 self.out("    /  \\       ---------------------", T_BLUE);
-                self.out(&format!("   /____\\      OS:      Foundation 0.1 x86_64"), T_BLUE);
-                self.out(&format!("   | || |      Kernel:  foundation (Rust, no_std)"), T_BLUE);
+                self.out(&format!("   /____\\      OS:      Stoa 0.1 x86_64"), T_BLUE);
+                self.out(&format!("   | || |      Kernel:  stoa (Rust, no_std)"), T_BLUE);
                 self.out(&format!("   | || |      Uptime:  {}", sys::uptime_string()), T_BLUE);
                 self.out(&format!("  _|_||_|_     Display: {}x{}", w, h), T_BLUE);
                 self.out(&format!(" |________|    CPU:     {}", sys::cpu_brand()), T_BLUE);
@@ -831,7 +831,7 @@ impl App for Files {
         c.fill_rect(r.x, r.y, r.w, r.h, 0xFFFFFF);
         c.fill_rect(r.x, r.y, r.w, 38, 0xFFF6E6);
         c.fill_rect(r.x, r.y + 38, r.w, 1, 0xF0DDB8);
-        c.text(r.x + 12, r.y + 11, "/  (FoundationFS, in memory)", FONT_BOLD, 0x7A4E0E);
+        c.text(r.x + 12, r.y + 11, "/  (StoaFS, in memory)", FONT_BOLD, 0x7A4E0E);
         let nb = self.new_btn();
         button(c, Rect::new(r.x + nb.x, r.y + nb.y, nb.w, nb.h), "New file", 0xF2A93B);
         c.text(r.x + 46, r.y + 44, "Name", FONT, 0x8A93AA);
@@ -861,7 +861,7 @@ impl App for About {
         AppKind::About
     }
     fn title(&self) -> String {
-        "About Foundation".into()
+        "About Stoa".into()
     }
     fn size(&self) -> (i32, i32) {
         (440, 320)
@@ -870,7 +870,7 @@ impl App for About {
         c.gradient_v(r.x, r.y, r.w, 120, 0x1E3A7A, 0x4F3F9C);
         c.fill_rect(r.x, r.y + 120, r.w, r.h - 120, 0xFFFFFF);
         draw_logo(c, r.x + 24, r.y + 22, 76, 0xFFFFFF, 255);
-        c.text(r.x + 124, r.y + 34, "Foundation OS", FONT_LARGE, 0xFFFFFF);
+        c.text(r.x + 124, r.y + 34, "Stoa", FONT_LARGE, 0xFFFFFF);
         c.text(r.x + 124, r.y + 66, "Version 0.1 \"Bedrock\"", FONT, 0xD0D8F5);
         let lines = [
             "A hobby operating system built from scratch",

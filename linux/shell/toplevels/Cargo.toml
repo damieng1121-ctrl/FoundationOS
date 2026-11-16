@@ -1,8 +1,8 @@
 [package]
-name = "foundation-toplevels"
+name = "stoa-toplevels"
 version = "0.1.0"
 edition = "2021"
-description = "Reports open windows to Foundation Shell as JSON lines and accepts activate/close/minimize commands on stdin."
+description = "Reports open windows to Stoa Shell as JSON lines and accepts activate/close/minimize commands on stdin."
 
 [dependencies]
 wayland-client = "0.31"

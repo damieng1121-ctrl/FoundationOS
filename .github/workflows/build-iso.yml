@@ -1,9 +1,9 @@
-name: Build Foundation OS ISO
+name: Build Stoa ISO
 
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Build Foundation kernel"]
+    workflows: ["Build Stoa kernel"]
     types: [completed]
   push:
     branches: [main, "claude/**"]
@@ -31,31 +31,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mmdebstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools python3-pip
 
-      - name: Fetch the latest Foundation kernel
+      - name: Fetch the latest Stoa kernel
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="$(gh release list --limit 50 --json tagName --jq '.[].tagName' | grep '^kernel-' | sort -V | tail -1 || true)"
           if [ -n "$tag" ]; then
             gh release download "$tag" --pattern 'linux-image-*.deb' --dir linux/kernel-debs
-            echo "Using Foundation kernel $tag"; ls -l linux/kernel-debs
+            echo "Using Stoa kernel $tag"; ls -l linux/kernel-debs
           else
-            echo "::warning::No Foundation kernel release yet - this ISO uses Ubuntu's stock kernel"
+            echo "::warning::No Stoa kernel release yet - this ISO uses Ubuntu's stock kernel"
           fi
 
-      - name: Build Foundation Shell helper (Rust)
+      - name: Build Stoa Shell helper (Rust)
         run: cargo build --release --manifest-path linux/shell/toplevels/Cargo.toml
 
       - name: Build ISO
         run: |
-          sudo mkdir -p /mnt/foundation
-          sudo WORK=/mnt/foundation/work OUT="$PWD/linux/out" SQUASH_COMP=xz ./linux/build-iso.sh
+          sudo mkdir -p /mnt/stoa
+          sudo WORK=/mnt/stoa/work OUT="$PWD/linux/out" SQUASH_COMP=xz ./linux/build-iso.sh
           ls -lh linux/out
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: foundation-os-iso
+          name: stoa-os-iso
           path: linux/out/*
           compression-level: 0
           retention-days: 30

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Install Foundation OS
-Comment=Install Foundation OS on this computer
-Icon=foundation
-Exec=foundation-installer
-Categories=System;
-Terminal=false
-OnlyShowIn=Foundation;
