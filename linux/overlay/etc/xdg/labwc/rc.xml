@@ -17,19 +17,32 @@
   <snapping><range>12</range><topMaximize>yes</topMaximize></snapping>
   <keyboard>
     <default />
-    <keybind key="W-Space"><action name="Execute"><command>foundation-launcher</command></action></keybind>
+    <!-- Windows-style shortcuts -->
+    <keybind key="W-space"><action name="Execute"><command>foundation-shell start</command></action></keybind>
+    <keybind key="C-Escape"><action name="Execute"><command>foundation-shell start</command></action></keybind>
+    <keybind key="W-s"><action name="Execute"><command>foundation-shell search</command></action></keybind>
+    <keybind key="W-a"><action name="Execute"><command>foundation-shell quick</command></action></keybind>
+    <keybind key="W-n"><action name="Execute"><command>foundation-shell calendar</command></action></keybind>
+    <keybind key="W-r"><action name="Execute"><command>foundation-shell run</command></action></keybind>
+    <keybind key="W-e"><action name="Execute"><command>thunar</command></action></keybind>
+    <keybind key="W-i"><action name="Execute"><command>foundation-settings</command></action></keybind>
+    <keybind key="W-l"><action name="Execute"><command>foundation-lock</command></action></keybind>
+    <keybind key="C-S-Escape"><action name="Execute"><command>gnome-system-monitor</command></action></keybind>
+    <keybind key="C-A-Delete"><action name="Execute"><command>gnome-system-monitor</command></action></keybind>
     <keybind key="W-Return"><action name="Execute"><command>foot</command></action></keybind>
     <keybind key="C-A-t"><action name="Execute"><command>foot</command></action></keybind>
-    <keybind key="W-e"><action name="Execute"><command>thunar</command></action></keybind>
-    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
-    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
-    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
-    <keybind key="A-F4"><action name="Close" /></keybind>
-    <keybind key="Print"><action name="Execute"><command>sh -c 'mkdir -p ~/Pictures/Screenshots &amp;&amp; grim ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png &amp;&amp; notify-send Screenshot saved'</command></action></keybind>
-    <keybind key="S-Print"><action name="Execute"><command>sh -c 'mkdir -p ~/Pictures/Screenshots &amp;&amp; grim -g &quot;$(slurp)&quot; ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png'</command></action></keybind>
+    <keybind key="Print"><action name="Execute"><command>foundation-screenshot full</command></action></keybind>
+    <keybind key="W-S-s"><action name="Execute"><command>foundation-screenshot area</command></action></keybind>
     <keybind key="XF86AudioRaiseVolume"><action name="Execute"><command>wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+</command></action></keybind>
     <keybind key="XF86AudioLowerVolume"><action name="Execute"><command>wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-</command></action></keybind>
     <keybind key="XF86AudioMute"><action name="Execute"><command>wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle</command></action></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute"><command>brightnessctl set 5%+</command></action></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute"><command>brightnessctl set 5%-</command></action></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Down"><action name="Iconify" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
   </keyboard>
   <mouse>
     <default />

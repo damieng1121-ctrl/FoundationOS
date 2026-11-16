@@ -63,9 +63,21 @@ stage_rootfs() {
   touch "$WORK/.rootfs-done"
 }
 
+build_shell_helper() {
+  # foundation-toplevels (Rust): tells the taskbar which windows are open.
+  local dir="$HERE/shell/toplevels" bin="$HERE/shell/toplevels/target/release/foundation-toplevels"
+  if command -v cargo >/dev/null 2>&1; then
+    log "Building foundation-toplevels"
+    (cd "$dir" && cargo build --release)
+  fi
+  [[ -x "$bin" ]] || { echo "foundation-toplevels is not built: install Rust (https://rustup.rs) and re-run" >&2; exit 1; }
+  install -D -m 0755 "$bin" "$ROOT/usr/lib/foundation/foundation-toplevels"
+}
+
 stage_customize() {
   log "Applying Foundation overlay"
   cp -a "$HERE/overlay/." "$ROOT/"
+  build_shell_helper
   cp "$HERE/VERSION" "$ROOT/usr/share/foundation/VERSION"
   install -m 0755 "$HERE/setup-rootfs.sh" "$ROOT/tmp/setup-rootfs.sh"
   mount_chroot

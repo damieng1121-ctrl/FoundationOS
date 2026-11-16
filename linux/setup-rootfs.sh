@@ -14,7 +14,7 @@ apt-get install -y --no-install-recommends \
   squashfs-tools xfsprogs gdisk \
   xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev \
   xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
-  x11-utils wlr-randr
+  x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
 rm -rf /var/cache/foundation/debs
@@ -92,10 +92,12 @@ APT::Periodic::Unattended-Upgrade "1";
 APT
 
 # --- Desktop integration
-chmod 0755 /usr/bin/fpkg /usr/bin/foundation-* /usr/lib/foundation/fpkg-helper /usr/lib/foundation/live-status \
-  /usr/lib/foundation/install-bootloader-pkg /usr/lib/foundation/select-session
+chmod 0755 /usr/bin/fpkg /usr/bin/foundation-* /usr/lib/foundation/fpkg-helper \
+  /usr/lib/foundation/install-bootloader-pkg /usr/lib/foundation/select-session /usr/lib/foundation/app-names /usr/lib/foundation/foundation-toplevels
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
+/usr/lib/foundation/app-names
 update-desktop-database /usr/share/applications || true
+update-desktop-database /usr/local/share/applications || true
 update-mime-database /usr/share/mime
 dconf update
 glib-compile-schemas /usr/share/glib-2.0/schemas || true

@@ -159,5 +159,9 @@ class Store(Gtk.Window):
 
 
 if __name__ == "__main__":
-    Store()
+    store = Store()
+    if "--search" in sys.argv[1:]:
+        i = sys.argv.index("--search")
+        if i + 1 < len(sys.argv):
+            store.search.set_text(sys.argv[i + 1])
     Gtk.main()

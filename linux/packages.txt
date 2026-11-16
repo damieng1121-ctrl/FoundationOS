@@ -44,8 +44,9 @@ labwc
 xwayland
 libgl1-mesa-dri
 mesa-utils
-waybar
-swaybg
+swaylock
+gnome-system-monitor
+brightnessctl
 swayidle
 mako-notifier
 grim

@@ -25,8 +25,7 @@ def pick_wallpaper(parent):
         os.makedirs(cfg, exist_ok=True)
         with open(os.path.join(cfg, "wallpaper"), "w") as fh:
             fh.write(path)
-        subprocess.run(["pkill", "-x", "swaybg"])
-        ui.spawn("swaybg", "-m", "fill", "-i", path)
+        ui.spawn("foundation-shell", "wallpaper")
     dlg.destroy()
 
 
@@ -113,6 +112,13 @@ def main():
         return
     if len(sys.argv) > 1 and sys.argv[1] == "display":
         display_dialog(None)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] in ("personalise", "personalize"):
+        pick_wallpaper(None)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "accounts":
+        ui.spawn("foot", "--title", "Change password", "sh", "-c",
+                 "echo 'Change your Foundation password'; echo; passwd; echo; echo 'Press Enter to close'; read _")
         return
     win = Gtk.Window(title="Foundation Settings")
     win.set_default_size(*ui.fit_size(640, 460))

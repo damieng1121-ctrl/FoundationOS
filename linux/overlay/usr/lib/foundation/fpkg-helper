@@ -89,3 +89,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    if os.path.exists("/usr/lib/foundation/app-names"):
+        subprocess.run(["/usr/lib/foundation/app-names"])

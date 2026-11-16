@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Foundation Shell: desktop, taskbar, Start menu, Quick Settings, calendar and Run.
+
+  foundation-shell            start the shell (once per session)
+  foundation-shell start      toggle the Start menu
+  foundation-shell search     open Start with the search box
+  foundation-shell quick      toggle Quick Settings
+  foundation-shell calendar   toggle the calendar
+  foundation-shell run        open the Run box
+  foundation-shell wallpaper  reload the wallpaper
+"""
+import os
+import signal
+import sys
+
+sys.path.insert(0, os.environ.get("FOUNDATION_SHELL_DIR", "/usr/lib/foundation/shell"))
+
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+import system  # noqa: E402
+import theme  # noqa: E402
+
+
+class Shell(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="os.foundation.Shell",
+                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.ready = False
+
+    def do_startup(self):
+        Gtk.Application.do_startup(self)
+        theme.apply()
+        from desktop import Desktop
+        from flyouts import CalendarFlyout, QuickSettings, RunDialog
+        from startmenu import StartMenu
+        from taskbar import Taskbar
+        self.start = StartMenu(self)
+        self.quick = QuickSettings(self)
+        self.calendar = CalendarFlyout(self)
+        self.run_box = RunDialog(self)
+        self.desktop = Desktop(self)
+        self.taskbar = Taskbar(self)
+        for w in (self.start, self.quick, self.calendar, self.run_box, self.desktop, self.taskbar):
+            self.add_window(w)
+        self.desktop.show_all()
+        self.taskbar.show_all()
+        self.hold()
+        self.ready = True
+
+    def do_command_line(self, cl):
+        args = cl.get_arguments()[1:]
+        cmd = args[0] if args else ""
+        actions = {
+            "start": self.start.toggle,
+            "search": self.start.open_search,
+            "quick": self.quick.toggle,
+            "calendar": self.calendar.toggle,
+            "run": self.run_box.open_popup,
+            "wallpaper": self.desktop.load_wallpaper,
+            "power": lambda: self.power_menu(None),
+        }
+        if cmd in actions:
+            actions[cmd]()
+        return 0
+
+    def power_menu(self, widget):
+        m = Gtk.Menu()
+        for label, act in [("Lock", "lock"), ("Sleep", "sleep"), ("Sign out", "signout"),
+                           ("Restart", "restart"), ("Shut down", "shutdown")]:
+            it = Gtk.MenuItem(label=label)
+            it.connect("activate", lambda _i, a=act: system.power(a))
+            m.append(it)
+        m.show_all()
+        if widget:
+            m.popup_at_widget(widget, 1, 7, None)  # Gdk.Gravity.NORTH_WEST -> SOUTH_WEST style
+        else:
+            m.popup_at_pointer(None)
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    sys.exit(Shell().run(sys.argv))

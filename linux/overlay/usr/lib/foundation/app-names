@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Give apps familiar names and hide technical tools from the Start menu.
+
+Writes overrides to /usr/local/share/applications, which takes precedence over /usr/share/applications.
+Re-run after installing packages (fpkg-helper does this automatically)."""
+import os
+import re
+
+SRC = "/usr/share/applications"
+DST = "/usr/local/share/applications"
+RENAME = {
+    "thunar.desktop": ("File Explorer", "Browse files, folders and drives"),
+    "org.xfce.mousepad.desktop": ("Notepad", "Write and edit text files"),
+    "org.xfce.ristretto.desktop": ("Photos", "View your pictures"),
+    "atril.desktop": ("PDF Reader", "Open PDF and other documents"),
+    "org.codeberg.dnkl.foot.desktop": ("Terminal", "Run commands"),
+    "org.gnome.SystemMonitor.desktop": ("Task Manager", "See and end running programs, check performance"),
+    "org.gnome.Epiphany.desktop": ("Web Browser", "Browse the web"),
+    "engrampa.desktop": ("Archive Manager", "Open and create .zip and other archives"),
+    "pavucontrol.desktop": ("Sound Mixer", "Choose speakers, microphones and app volumes"),
+    "blueman-manager.desktop": ("Bluetooth Devices", "Pair and manage Bluetooth devices"),
+    "nm-connection-editor.desktop": ("Network Connections", "Advanced network, VPN and Wi-Fi settings"),
+}
+HIDE = [
+    "org.codeberg.dnkl.foot-server.desktop", "org.codeberg.dnkl.footclient.desktop", "lxpolkit.desktop",
+    "thunar-bulk-rename.desktop", "thunar-settings.desktop", "blueman-adapters.desktop", "calamares.desktop",
+    "install-debian.desktop", "wine.desktop", "winetricks.desktop", "display-im6.q16.desktop",
+    "debian-uxterm.desktop", "debian-xterm.desktop", "python3.12.desktop", "info.desktop", "vim.desktop",
+    "org.gnome.Epiphany.WebAppProvider.desktop", "mpv.desktop", "x11-display.desktop",
+]
+
+
+def rewrite(name, new_name=None, comment=None, hide=False):
+    src = os.path.join(SRC, name)
+    if not os.path.exists(src):
+        return
+    text = open(src, encoding="utf-8", errors="replace").read()
+    head, sep, rest = text.partition("\n[")  # only touch the [Desktop Entry] group
+    if new_name:
+        head = re.sub(r"(?m)^(Name|GenericName|Comment)(\[[^\]]+\])?=.*\n?", "", head)
+        head = head.replace("[Desktop Entry]\n", f"[Desktop Entry]\nName={new_name}\nComment={comment}\n", 1)
+    if hide:
+        head = re.sub(r"(?m)^NoDisplay=.*\n?", "", head)
+        head = head.replace("[Desktop Entry]\n", "[Desktop Entry]\nNoDisplay=true\n", 1)
+    os.makedirs(DST, exist_ok=True)
+    with open(os.path.join(DST, name), "w", encoding="utf-8") as f:
+        f.write(head + sep + rest)
+
+
+for n, (title, comment) in RENAME.items():
+    rewrite(n, title, comment)
+for n in HIDE:
+    rewrite(n, hide=True)
