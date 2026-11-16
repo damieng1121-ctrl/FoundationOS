@@ -131,8 +131,11 @@ stage_iso() {
   printf '%s\n' casper calamares > "$ISO/casper/filesystem.manifest-remove"
   du -sx --block-size=1 "$ROOT" | cut -f1 > "$ISO/casper/filesystem.size"
 
-  log "Compressing root filesystem (squashfs/zstd)"
-  mksquashfs "$ROOT" "$ISO/casper/filesystem.squashfs" -noappend -comp zstd -Xcompression-level "${SQUASH_LEVEL:-15}" \
+  # SQUASH_COMP=xz gives the smallest image (used for releases); zstd (default) unpacks faster.
+  local comp=(-comp zstd -Xcompression-level "${SQUASH_LEVEL:-15}")
+  [[ "${SQUASH_COMP:-zstd}" == "xz" ]] && comp=(-comp xz -Xbcj x86 -b 1M)
+  log "Compressing root filesystem (squashfs/${SQUASH_COMP:-zstd})"
+  mksquashfs "$ROOT" "$ISO/casper/filesystem.squashfs" -noappend "${comp[@]}" \
     -e boot/efi -wildcards -e 'proc/*' -e 'sys/*' -e 'dev/*' -e 'run/*' -e 'tmp/*'
 
   echo "Foundation OS $VERSION \"Bedrock\" - amd64 ($(date -u +%Y%m%d))" > "$ISO/.disk/info"

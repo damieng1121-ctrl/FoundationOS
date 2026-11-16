@@ -46,6 +46,7 @@ class Taskbar(Gtk.Window):
         pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/foundation/logo-round-96.png", 34, 34)
         start.add(Gtk.Image.new_from_pixbuf(pb))
         start.set_tooltip_text("Start")
+        start.set_valign(Gtk.Align.CENTER)
         start.connect("clicked", lambda *_: shell.start.toggle())
         left.pack_start(start, False, False, 0)
         search = theme.css(Gtk.Button(), "fs-tb-btn", "fs-search-pill")
@@ -58,6 +59,8 @@ class Taskbar(Gtk.Window):
         self.search_pill = search
         ai = theme.css(Gtk.Button(label="✦"), "fs-tb-btn", "fs-ai")
         ai.set_tooltip_text("Foundation AI (Win+C)")
+        ai.set_valign(Gtk.Align.CENTER)
+        ai.set_size_request(38, 38)
         ai.connect("clicked", lambda *_: apps.run_command("foundation-assistant"))
         left.pack_start(ai, False, False, 0)
         bar.pack_start(left, False, False, 0)

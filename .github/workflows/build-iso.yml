@@ -49,7 +49,7 @@ jobs:
       - name: Build ISO
         run: |
           sudo mkdir -p /mnt/foundation
-          sudo WORK=/mnt/foundation/work OUT="$PWD/linux/out" ./linux/build-iso.sh
+          sudo WORK=/mnt/foundation/work OUT="$PWD/linux/out" SQUASH_COMP=xz ./linux/build-iso.sh
           ls -lh linux/out
 
       - name: Upload ISO
@@ -59,6 +59,19 @@ jobs:
           path: linux/out/*
           compression-level: 0
           retention-days: 30
+
+      - name: Split ISO for release if over GitHub's 2 GB file limit
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd linux/out
+          iso=$(ls *.iso)
+          if [ "$(stat -c %s "$iso")" -gt 2000000000 ]; then
+            split -b 1900M -d "$iso" "$iso.part"
+            rm "$iso"
+            printf 'The ISO is split into parts. Join them, then check the checksum:\n\n  Windows:  copy /b %s.part00 + %s.part01 %s\n  Mac/Linux: cat %s.part* > %s\n' \
+              "$iso" "$iso" "$iso" "$iso" "$iso" > HOW-TO-JOIN.txt
+          fi
+          ls -lh
 
       - name: Publish release (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
