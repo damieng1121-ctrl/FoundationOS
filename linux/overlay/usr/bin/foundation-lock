@@ -1,5 +1,10 @@
 #!/bin/sh
 # Foundation lock screen.
+if grep -qw boot=casper /proc/cmdline 2>/dev/null; then
+  # The live user has no password, so a locked live session could never be unlocked.
+  notify-send "Foundation" "Locking isn't available while trying Foundation from the installation media."
+  exit 0
+fi
 exec swaylock -f -i "$(foundation-wallpaper)" -s fill \
   --font Inter --font-size 22 --indicator-radius 90 --indicator-thickness 6 \
   --inside-color 13192acc --inside-clear-color 13192acc --inside-ver-color 13192acc --inside-wrong-color 13192acc \

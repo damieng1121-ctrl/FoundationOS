@@ -65,7 +65,7 @@ class Taskbar(Gtk.Window):
         # Right: install (live), updates, status pill, clock
         right = Gtk.Box(spacing=4)
         if system.is_live():
-            inst = theme.css(Gtk.Button(label="Install Foundation"), "fs-qs-tile", "fs-on")
+            inst = theme.css(Gtk.Button(label="Install Foundation"), "fs-qs-tile", "fs-install")
             inst.connect("clicked", lambda *_: apps.run_command("foundation-installer"))
             right.pack_start(inst, False, False, 4)
         self.upd = theme.css(Gtk.Button(), "fs-tb-btn")

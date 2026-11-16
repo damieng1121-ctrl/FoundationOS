@@ -6,6 +6,12 @@ ACCENT = "#4f8cff"
 CSS = b"""
 * { font-family: "Inter", "Noto Sans", sans-serif; }
 window.fs-transparent, .fs-transparent { background-color: transparent; }
+/* Our buttons draw their own look: drop the GTK theme's gradients, borders and shadows. */
+button.fs-tb-btn, button.fs-qs-tile, button.fs-tile, button.fs-row, button.fs-link, button.fs-power-btn {
+  background-image: none; border-image: none; box-shadow: none; text-shadow: none; outline-color: rgba(79,140,255,0.6);
+}
+button.fs-install { background-color: #3fb37f; color: white; font-weight: 700; border-radius: 12px; padding: 4px 14px; }
+button.fs-install:hover { background-color: #34a06f; }
 
 /* ---------- glass surfaces ---------- */
 .fs-glass {

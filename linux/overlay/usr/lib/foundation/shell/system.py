@@ -176,6 +176,8 @@ def power(action):
 
 
 def is_live():
+    if os.environ.get("FOUNDATION_LIVE") == "1":  # for testing the live-session UI
+        return True
     try:
         return "boot=casper" in open("/proc/cmdline").read().split()
     except OSError:

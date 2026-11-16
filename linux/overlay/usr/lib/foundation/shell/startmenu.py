@@ -180,7 +180,7 @@ class StartMenu(Popup):
         ub.connect("clicked", lambda *_: self._run("foundation-settings accounts"))
         foot.pack_start(ub, False, False, 0)
         if system.is_live():
-            inst = theme.css(Gtk.Button(label="Install Foundation"), "fs-qs-tile", "fs-on")
+            inst = theme.css(Gtk.Button(label="Install Foundation"), "fs-qs-tile", "fs-install")
             inst.connect("clicked", lambda *_: self._run("foundation-installer"))
             foot.pack_start(inst, False, False, 0)
         pb = theme.css(Gtk.Button(), "fs-power-btn")

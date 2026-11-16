@@ -34,6 +34,34 @@ Choose **Try or Install Foundation OS**, then click **Install Foundation** on th
 After installation remove the ISO and reboot; you'll get the Foundation login screen, then the welcome
 app offers one-click installs of Google Chrome, Microsoft 365 and Google Drive.
 
+## Foundation Shell
+
+Foundation's desktop is its own: **Foundation Shell** (`overlay/usr/bin/foundation-shell`,
+`overlay/usr/lib/foundation/shell/`) on the labwc compositor, with Windows-familiar conventions:
+
+- **Desktop** with This PC, Documents, Recycle Bin, Foundation Store and your Desktop folder; right-click for
+  New folder / New text document / Display settings / Personalise.
+- **Taskbar**: Start and Search on the left, pinned and running apps in the centre (click to switch or minimise,
+  middle-click for a new window, right-click to pin or close), Quick Settings and the clock on the right.
+- **Start menu**: search, pinned apps, All apps A–Z, Recommended (recent files), account and power.
+- **Quick Settings**: Wi-Fi with network picker, Bluetooth, Airplane mode, volume, brightness, battery.
+- **Familiar names**: File Explorer, Notepad, Photos, Task Manager, PDF Reader, Terminal.
+- `foundation-toplevels` (Rust, `shell/toplevels/`) feeds the taskbar the list of open windows.
+
+| Shortcut | Action |
+|---|---|
+| Win+Space or Ctrl+Esc | Start |
+| Win+S | Search |
+| Win+E | File Explorer |
+| Win+R | Run |
+| Win+I | Settings |
+| Win+A | Quick Settings |
+| Win+L | Lock |
+| Ctrl+Shift+Esc | Task Manager |
+| Win+Shift+S / Print | Screenshot (area / full) |
+| Win+←/→/↑/↓ | Snap left/right, maximise, minimise |
+| Alt+Tab, Alt+F4 | Switch / close windows |
+
 ## Installing software
 
 Everything goes through **`fpkg`** (the Foundation Store is a graphical front end to it):
