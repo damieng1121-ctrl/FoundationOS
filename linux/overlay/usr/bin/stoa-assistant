@@ -336,7 +336,7 @@ class Panel(Gtk.Window):
             card.get_style_context().add_class("ai-tool-done")
             label = done
             if name == "build_app":
-                label = f"Built {args.get('name', 'your app')} - it's open and in Start"
+                label = f"Built {args.get('name', 'your app')} - it's open and in the Stoa menu"
             elif name in ("install_software", "open_app"):
                 label = f"{done} {args.get('target') or args.get('name')}"
             card.title.set_text(f"✓  {label}")

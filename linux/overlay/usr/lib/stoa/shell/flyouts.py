@@ -281,18 +281,22 @@ class RunDialog(Popup):
         super().__init__("run", 440, 160, h_anchor="left")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_border_width(18)
-        box.pack_start(theme.css(Gtk.Label(label="Run", xalign=0), "fs-h1"), False, False, 0)
+        box.pack_start(theme.css(Gtk.Label(label="Go To", xalign=0), "fs-h1"), False, False, 0)
         box.pack_start(theme.css(Gtk.Label(
-            label="Type the name of a program, folder, document or website, and Stoa will open it.",
+            label="Type an app, folder, file or website and Stoa will take you there.",
             xalign=0, wrap=True, max_width_chars=48), "fs-muted"), False, False, 0)
-        self.entry = theme.css(Gtk.Entry(placeholder_text="e.g. notepad, ~/Documents, https://…"), "fs-search")
+        self.entry = theme.css(Gtk.Entry(placeholder_text="e.g. files, ~/Documents, stoa.app"), "fs-search")
         self.entry.connect("activate", self._go)
         box.pack_start(self.entry, False, False, 0)
         self.err = theme.css(Gtk.Label(xalign=0), "fs-muted")
         box.pack_start(self.err, False, False, 0)
         self.panel.pack_start(box, True, True, 0)
 
-    ALIASES = {"notepad": "mousepad", "explorer": "thunar", "cmd": "foot", "powershell": "foot",
+    # Stoa names first; common names from other systems also work for people switching over.
+    ALIASES = {"files": "thunar", "editor": "mousepad", "text": "mousepad", "terminal": "foot",
+               "settings": "stoa-settings", "store": "stoa-store", "monitor": "gnome-system-monitor",
+               "ai": "stoa-assistant", "calculator": "gnome-calculator",
+               "notepad": "mousepad", "explorer": "thunar", "cmd": "foot", "powershell": "foot",
                "control": "stoa-settings", "taskmgr": "gnome-system-monitor", "calc": "gnome-calculator",
                "mspaint": "stoa-store", "regedit": "stoa-settings", "winver": "stoa-settings about"}
 

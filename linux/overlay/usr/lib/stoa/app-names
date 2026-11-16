@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Give apps familiar names and hide technical tools from the Start menu.
+"""Give apps Stoa's own names and hide technical tools from the Stoa menu.
 
 Writes overrides to /usr/local/share/applications, which takes precedence over /usr/share/applications.
 Re-run after installing packages (fpkg-helper does this automatically)."""
@@ -9,15 +9,15 @@ import re
 SRC = "/usr/share/applications"
 DST = "/usr/local/share/applications"
 RENAME = {
-    "thunar.desktop": ("File Explorer", "Browse files, folders and drives"),
-    "org.xfce.mousepad.desktop": ("Notepad", "Write and edit text files"),
-    "org.xfce.ristretto.desktop": ("Photos", "View your pictures"),
-    "atril.desktop": ("PDF Reader", "Open PDF and other documents"),
+    "thunar.desktop": ("Files", "Browse files, folders and drives"),
+    "org.xfce.mousepad.desktop": ("Text Editor", "Write and edit text files"),
+    "org.xfce.ristretto.desktop": ("Image Viewer", "View your pictures"),
+    "atril.desktop": ("Document Viewer", "Open PDF and other documents"),
     "org.codeberg.dnkl.foot.desktop": ("Terminal", "Run commands"),
-    "org.gnome.SystemMonitor.desktop": ("Task Manager", "See and end running programs, check performance"),
+    "org.gnome.SystemMonitor.desktop": ("System Monitor", "See and end running programs, check performance"),
     "org.gnome.Epiphany.desktop": ("Web Browser", "Browse the web"),
     "engrampa.desktop": ("Archive Manager", "Open and create .zip and other archives"),
-    "pavucontrol.desktop": ("Sound Mixer", "Choose speakers, microphones and app volumes"),
+    "pavucontrol.desktop": ("Sound", "Choose speakers, microphones and app volumes"),
     "blueman-manager.desktop": ("Bluetooth Devices", "Pair and manage Bluetooth devices"),
     "nm-connection-editor.desktop": ("Network Connections", "Advanced network, VPN and Wi-Fi settings"),
 }

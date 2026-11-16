@@ -21,7 +21,7 @@ GitHub builds the ISO automatically:
 ## Test it in a virtual machine
 
 Give the VM **4 GB RAM (2 GB minimum), 2+ CPUs and a 25 GB+ disk**, attach the ISO as a CD/DVD, and boot it.
-Choose **Try or Install Stoa**, then click **Install Stoa** on the taskbar or welcome screen.
+Choose **Try or Install Stoa**, then click **Install Stoa** on the bar or welcome screen.
 
 | Hypervisor | Notes |
 |---|---|
@@ -37,38 +37,41 @@ app offers one-click installs of Google Chrome, Microsoft 365 and Google Drive.
 ## Stoa Shell
 
 Stoa's desktop is its own: **Stoa Shell** (`overlay/usr/bin/stoa-shell`,
-`overlay/usr/lib/stoa/shell/`) on the labwc compositor, with Windows-familiar conventions:
+`overlay/usr/lib/stoa/shell/`) on the labwc compositor. It's designed to feel familiar to anyone coming from
+another computer, with names and a look of its own:
 
-- **Desktop** with This PC, Documents, Recycle Bin, Stoa Store and your Desktop folder; right-click for
+- **Desktop** with Computer, Documents, Bin, Stoa Store and your Desktop folder; right-click for
   New folder / New text document / Display settings / Personalise.
 - **Taskbar**: Start and Search on the left, pinned and running apps in the centre (click to switch or minimise,
   middle-click for a new window, right-click to pin or close), Quick Settings and the clock on the right.
-- **Start menu**: search, pinned apps, All apps A–Z, Recommended (recent files), account and power.
+- **Stoa menu** (the emblem button): search, pinned apps, All apps A–Z, Recommended (recent files), account and power.
 - **Quick Settings**: Wi-Fi with network picker, Bluetooth, Airplane mode, volume, brightness, battery.
-- **Familiar names**: File Explorer, Notepad, Photos, Task Manager, PDF Reader, Terminal.
-- `stoa-toplevels` (Rust, `shell/toplevels/`) feeds the taskbar the list of open windows.
+- **Plain names**: Files, Text Editor, Image Viewer, Document Viewer, System Monitor, Terminal.
+- `stoa-toplevels` (Rust, `shell/toplevels/`) feeds the bar the list of open windows.
+
+*Super* is the key with the logo, between Ctrl and Alt.
 
 | Shortcut | Action |
 |---|---|
-| Win+Space or Ctrl+Esc | Start |
-| Win+S | Search |
-| Win+E | File Explorer |
-| Win+R | Run |
-| Win+I | Settings |
-| Win+A | Quick Settings |
-| Win+L | Lock |
-| Ctrl+Shift+Esc | Task Manager |
-| Win+Shift+S / Print | Screenshot (area / full) |
-| Win+←/→/↑/↓ | Snap left/right, maximise, minimise |
+| Super+Space or Ctrl+Esc | Stoa menu |
+| Super+S | Search |
+| Super+E | Files |
+| Super+R | Go To |
+| Super+I | Settings |
+| Super+A | Quick Settings |
+| Super+L | Lock |
+| Ctrl+Shift+Esc | System Monitor |
+| Super+Shift+S / Print | Screenshot (area / full) |
+| Super+←/→/↑/↓ | Snap left/right, maximise, minimise |
 | Alt+Tab, Alt+F4 | Switch / close windows |
 
 ## Stoa AI
 
-Stoa AI (taskbar ✦ button, **Win+C**, or Start) is an assistant built into the OS, powered by Claude
+Stoa AI (the ✦ button on the bar, **Super+C**, or the Stoa menu) is an assistant built into the OS, powered by Claude
 (`claude-opus-5-5` through the Anthropic API). Ask for what you need and it does it:
 
 - **Builds apps on the spot.** "Make me a budget tracker", "build a Pomodoro timer", "I need a flashcard app
-  for French verbs" - you watch it being written, it opens as soon as it's ready, and it's added to Start.
+  for French verbs" - you watch it being written, it opens as soon as it's ready, and it's added to the Stoa menu.
   Ask for changes ("make the buttons bigger") and it updates the app. Apps are single HTML files run in a
   sandboxed web view (`stoa-ai-app`): they keep their own data and can't read your files.
 - **Installs software** from the Stoa Store, Flathub, apt or a downloaded .exe/.msi - always after you
@@ -136,7 +139,7 @@ Manifest fields: `id`, `name`, `version`, `type` (`windows` | `native` | `webapp
 ## Updates
 
 - Security updates install automatically in the background (unattended-upgrades).
-- A timer refreshes update information twice a day; the taskbar shows **⬆ N** when updates are waiting.
+- A timer refreshes update information twice a day; the bar shows **⬆ N** when updates are waiting.
   Click it (or run `stoa update`) to install everything: OS packages, vendor apps (Chrome, Edge...),
   Flatpaks and `.fpkg` packages.
 

@@ -1,4 +1,4 @@
-"""The Stoa taskbar: a floating glass bar with Start, search, apps, status and clock."""
+"""The Stoa bar: a floating glass bar with the Stoa menu, search, apps, status and clock."""
 import datetime
 
 import gi
@@ -45,7 +45,7 @@ class Taskbar(Gtk.Window):
         start = theme.css(Gtk.Button(), "fs-tb-btn", "fs-start")
         pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/stoa/logo-round-96.png", 34, 34)
         start.add(Gtk.Image.new_from_pixbuf(pb))
-        start.set_tooltip_text("Start")
+        start.set_tooltip_text("Stoa menu (Super+Space)")
         start.set_valign(Gtk.Align.CENTER)
         start.connect("clicked", lambda *_: shell.start.toggle())
         left.pack_start(start, False, False, 0)
@@ -58,7 +58,7 @@ class Taskbar(Gtk.Window):
         left.pack_start(search, False, False, 0)
         self.search_pill = search
         ai = theme.css(Gtk.Button(label="✦"), "fs-tb-btn", "fs-ai")
-        ai.set_tooltip_text("Stoa AI (Win+C)")
+        ai.set_tooltip_text("Stoa AI (Super+C)")
         ai.set_valign(Gtk.Align.CENTER)
         ai.set_size_request(38, 38)
         ai.connect("clicked", lambda *_: apps.run_command("stoa-assistant"))
@@ -231,7 +231,7 @@ class Taskbar(Gtk.Window):
             open_new.connect("activate", lambda *_: apps.launch(a))
             m.append(open_new)
             pinned = apps.is_pinned("taskbar", a.get_id())
-            p = Gtk.MenuItem(label="Unpin from taskbar" if pinned else "Pin to taskbar")
+            p = Gtk.MenuItem(label="Unpin from bar" if pinned else "Pin to bar")
             p.connect("activate", lambda *_: (apps.set_pinned("taskbar", a.get_id(), not pinned), self.refresh_apps()))
             m.append(p)
         if ws:

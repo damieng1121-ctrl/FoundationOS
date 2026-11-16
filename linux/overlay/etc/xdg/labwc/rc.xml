@@ -17,7 +17,7 @@
   <snapping><range>12</range><topMaximize>yes</topMaximize></snapping>
   <keyboard>
     <default />
-    <!-- Windows-style shortcuts -->
+    <!-- Stoa shortcuts (Super = the key with the logo between Ctrl and Alt) -->
     <keybind key="W-space"><action name="Execute"><command>stoa-shell start</command></action></keybind>
     <keybind key="C-Escape"><action name="Execute"><command>stoa-shell start</command></action></keybind>
     <keybind key="W-s"><action name="Execute"><command>stoa-shell search</command></action></keybind>

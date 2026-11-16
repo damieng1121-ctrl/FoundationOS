@@ -1,4 +1,4 @@
-"""The Stoa Start menu."""
+"""The Stoa menu."""
 import datetime
 import os
 import pwd
@@ -269,8 +269,8 @@ class StartMenu(Popup):
             return False
         m = Gtk.Menu()
         aid = a.get_id()
-        for kind, on_label, off_label in [("start", "Unpin from Start", "Pin to Start"),
-                                          ("taskbar", "Unpin from taskbar", "Pin to taskbar")]:
+        for kind, on_label, off_label in [("start", "Unpin from Stoa menu", "Pin to Stoa menu"),
+                                          ("taskbar", "Unpin from bar", "Pin to bar")]:
             pinned = apps.is_pinned(kind, aid)
             it = Gtk.MenuItem(label=on_label if pinned else off_label)
             it.connect("activate", lambda _i, k=kind, p=pinned: (apps.set_pinned(k, aid, not p),

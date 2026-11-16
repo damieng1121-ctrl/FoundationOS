@@ -103,9 +103,9 @@ class Desktop(Gtk.Window):
         home = os.path.expanduser("~")
         docs = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) or os.path.join(home, "Documents")
         items = [
-            Item("This PC", Gio.ThemedIcon.new("computer"), lambda: apps.run_command("thunar /"), system=True),
+            Item("Computer", Gio.ThemedIcon.new("computer"), lambda: apps.run_command("thunar /"), system=True),
             Item("Documents", Gio.ThemedIcon.new("folder-documents"), lambda: apps.run_command(f"thunar {GLib.shell_quote(docs)}"), system=True),
-            Item("Recycle Bin", Gio.ThemedIcon.new("user-trash-full" if self._trash_full() else "user-trash"),
+            Item("Bin", Gio.ThemedIcon.new("user-trash-full" if self._trash_full() else "user-trash"),
                  lambda: apps.run_command("thunar trash:///"), system=True),
         ]
         store = apps.app("stoa-store.desktop")
@@ -190,8 +190,8 @@ class Desktop(Gtk.Window):
             o = Gtk.MenuItem(label="Open")
             o.connect("activate", lambda *_: it.open_fn())
             m.append(o)
-            if it.name == "Recycle Bin":
-                e = Gtk.MenuItem(label="Empty Recycle Bin")
+            if it.name == "Bin":
+                e = Gtk.MenuItem(label="Empty Bin")
                 e.connect("activate", lambda *_: (apps.run_command("gio trash --empty"),
                                                    GLib.timeout_add(800, self._refresh_once)))
                 m.append(e)

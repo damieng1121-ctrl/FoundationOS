@@ -1,6 +1,6 @@
 # Stoa desktop session components (run by labwc at login).
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DISPLAY >/dev/null 2>&1
-# Stoa Shell: desktop, taskbar, Start menu, Quick Settings, calendar, Run.
+# Stoa Shell: desktop, bar, Stoa menu, Quick Settings, calendar, Go To.
 stoa-shell >/dev/null 2>&1 &
 # Keep the desktop sized to the screen (VM window resizes, monitors, compatibility mode).
 stoa-display-follow >/dev/null 2>&1 &

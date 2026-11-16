@@ -1,5 +1,5 @@
 """Base class for shell popups (Start, Quick Settings, Calendar, Run): glass panels above the
-taskbar that close on Escape or when you click anywhere else."""
+bar that close on Escape or when you click anywhere else."""
 import gi
 
 gi.require_version("GtkLayerShell", "0.1")

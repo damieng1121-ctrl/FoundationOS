@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Stoa Shell: desktop, taskbar, Start menu, Quick Settings, calendar and Run.
+"""Stoa Shell: desktop, bar, Stoa menu, Quick Settings, calendar and Go To.
 
   stoa-shell            start the shell (once per session)
-  stoa-shell start      toggle the Start menu
-  stoa-shell search     open Start with the search box
+  stoa-shell start      toggle the Stoa menu
+  stoa-shell search     open the Stoa menu with the search box
   stoa-shell quick      toggle Quick Settings
   stoa-shell calendar   toggle the calendar
-  stoa-shell run        open the Run box
+  stoa-shell run        open Go To
   stoa-shell wallpaper  reload the wallpaper
 """
 import os

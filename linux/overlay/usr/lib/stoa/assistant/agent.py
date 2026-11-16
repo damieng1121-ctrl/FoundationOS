@@ -65,7 +65,7 @@ TOOLS = [
     {
         "name": "build_app",
         "description": "Create (or replace) an app for the person and open it immediately. The app is a single "
-                       "self-contained HTML file with inline CSS/JS. It is added to the Start menu. Re-using an "
+                       "self-contained HTML file with inline CSS/JS. It is added to the Stoa menu. Re-using an "
                        "existing name replaces that app.",
         "eager_input_streaming": True,
         "input_schema": {
@@ -73,7 +73,7 @@ TOOLS = [
             "properties": {
                 "name": {"type": "string", "description": "Short app name shown in Start, e.g. 'Pomodoro Timer'"},
                 "description": {"type": "string", "description": "One sentence describing the app"},
-                "icon": {"type": "string", "enum": ICONS, "description": "Icon for the Start menu"},
+                "icon": {"type": "string", "enum": ICONS, "description": "Icon for the Stoa menu"},
                 "html": {"type": "string", "description": "The complete HTML document"},
             },
             "required": ["name", "description", "icon", "html"],
@@ -135,7 +135,7 @@ TOOLS = [
     },
     {
         "name": "open_app",
-        "description": "Open an installed app by name (e.g. 'File Explorer', 'Notepad', 'Google Chrome').",
+        "description": "Open an installed app by name (e.g. 'Files', 'Text Editor', 'Google Chrome').",
         "eager_input_streaming": True,
         "input_schema": {
             "type": "object",
@@ -332,7 +332,7 @@ class Agent:
                     "Categories=Utility;\nKeywords=stoa;ai;\nX-Stoa-AI-App=true\n")
         subprocess.Popen(["stoa-ai-app", app_id], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return f"Built '{a['name']}' (app id {app_id}, {len(a['html']):,} characters). It is open now and in the Start menu."
+        return f"Built '{a['name']}' (app id {app_id}, {len(a['html']):,} characters). It is open now and in the Stoa menu."
 
     def t_list_apps(self, a):
         apps = []

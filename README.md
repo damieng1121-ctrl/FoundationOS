@@ -18,7 +18,7 @@ Stoa has three tracks:
 ## Stoa (installable)
 
 - **Bootable ISO** with a live session and a graphical installer (Calamares): BIOS + UEFI, ext4/btrfs/xfs, full-disk or manual partitioning.
-- **Stoa desktop**: labwc compositor, Stoa taskbar and start menu, Stoa Store, Settings, welcome app.
+- **Stoa desktop**: labwc compositor, the Stoa bar and Stoa menu, Stoa Store, Settings, welcome app.
 - **`fpkg`**, one package manager for everything:
   - `stoa install google-chrome` / `microsoft-365` / `google-drive` / `zoom` / ... (39-app catalog: vendor apt repos, Flathub, web apps)
   - `stoa install setup.exe` / `installer.msi` - Windows programs, each in its own Wine "bottle", added to the menu
@@ -50,7 +50,7 @@ See **[linux/README.md](linux/README.md)** for downloading the ISO, testing it i
 - Taskbar with window list and live clock, start menu with restart/shut down
 - Desktop icons, anti-aliased text (Noto Sans Mono)
 
-**Apps:** Terminal (20+ commands: `ls`, `cat`, `write`, `edit`, `open`, `neofetch`, `calc`, `dmesg`, ...), Files, Notepad, Paint, Clock, System Monitor, About.
+**Apps:** Terminal (20+ commands: `ls`, `cat`, `write`, `edit`, `open`, `neofetch`, `calc`, `dmesg`, ...), Files, Editor, Paint, Clock, System Monitor, About.
 
 | Start menu | Multitasking |
 |---|---|

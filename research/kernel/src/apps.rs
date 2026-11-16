@@ -44,7 +44,7 @@ impl AppKind {
         match self {
             AppKind::Terminal => "Terminal",
             AppKind::Files => "Files",
-            AppKind::Notepad => "Notepad",
+            AppKind::Notepad => "Editor",
             AppKind::Paint => "Paint",
             AppKind::Clock => "Clock",
             AppKind::Monitor => "Monitor",
@@ -219,7 +219,7 @@ impl Terminal {
             "help" => self.out(
                 "Commands:\n  help              this list\n  clear             clear the screen\n  echo <text>       print text\n  \
 ls                list files\n  cat <file>        show a file\n  write <file> <t>  write text to a file\n  \
-rm <file>         delete a file\n  edit <file>       open a file in Notepad\n  open <app>        launch an app\n  \
+rm <file>         delete a file\n  edit <file>       open a file in Editor \n  open <app>        launch an app\n  \
 apps              list apps\n  ps                list open windows\n  uptime | date    time info\n  \
 mem               memory usage\n  cpu               processor info\n  calc <a> <op> <b> integer maths\n  \
 neofetch          system summary\n  dmesg             kernel log\n  reboot | shutdown power\n  exit              close terminal",
@@ -720,7 +720,7 @@ impl App for Notepad {
         AppKind::Notepad
     }
     fn title(&self) -> String {
-        format!("{} - Notepad", self.file)
+        format!("{} - Editor", self.file)
     }
     fn size(&self) -> (i32, i32) {
         (540, 400)
