@@ -14,7 +14,7 @@ apt-get install -y --no-install-recommends \
   squashfs-tools xfsprogs gdisk \
   xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev \
   xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
-  x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
+  systemd-resolved x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
   gir1.2-webkit2-4.1
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
@@ -125,6 +125,11 @@ fi
 
 # --- Boot: casper initramfs for the live system
 update-initramfs -u -k all
+
+# --- DNS: use the servers the network provides (DHCP), through systemd-resolved, like Ubuntu.
+# (The build copies the build machine's resolv.conf; never ship that.)
+systemctl enable systemd-resolved.service
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 # --- Clean up
 apt-get clean

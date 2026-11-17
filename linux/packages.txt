@@ -101,6 +101,7 @@ wireplumber
 bluez
 blueman
 network-manager
+systemd-resolved
 network-manager-gnome
 wpasupplicant
 openssh-client

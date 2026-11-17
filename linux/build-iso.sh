@@ -32,6 +32,9 @@ mount_chroot() {
   mountpoint -q "$ROOT/dev"     || mount --bind /dev "$ROOT/dev"
   mountpoint -q "$ROOT/dev/pts" || mount --bind /dev/pts "$ROOT/dev/pts"
   mountpoint -q "$ROOT/run"     || mount -t tmpfs tmpfs "$ROOT/run"
+  # /etc/resolv.conf in the image points into /run (systemd-resolved); give the chroot working DNS.
+  mkdir -p "$ROOT/run/systemd/resolve"
+  cp -L /etc/resolv.conf "$ROOT/run/systemd/resolve/stub-resolv.conf"
 }
 umount_chroot() {
   for d in run dev/pts dev sys proc; do
