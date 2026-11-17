@@ -57,7 +57,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
           sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod \
-            zstd dpkg-dev python3-pil
+            zstd dpkg-dev debhelper python3-pil
           df -h / /mnt
 
       - name: Build

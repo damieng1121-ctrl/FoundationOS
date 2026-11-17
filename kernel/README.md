@@ -42,7 +42,7 @@ The full configuration change is [`stoa.config`](stoa.config); edit it to tune t
 
 ```bash
 # Ubuntu 24.04, with deb-src enabled for noble, noble-updates and noble-security
-sudo apt install build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod zstd dpkg-dev python3-pil
+sudo apt install build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod zstd dpkg-dev debhelper python3-pil
 ./build-kernel.sh                 # latest Ubuntu kernel source
 ./build-kernel.sh 6.8.0-149.149   # or a specific one
 ls out/                           # linux-image-…-stoa_….deb, linux-headers-…
