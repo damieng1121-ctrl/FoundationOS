@@ -1,0 +1,24 @@
+#!/bin/sh
+# Install a Stoa update package (stoa-desktop_*.deb), or the .zip GitHub gives you around it.
+#   stoa-os-update                 # newest one in ~/Downloads
+#   stoa-os-update path/to/file    # a specific .deb or .zip
+set -e
+src="$1"
+if [ -z "$src" ]; then
+  src="$(ls -t "$HOME"/Downloads/stoa-desktop_*.deb "$HOME"/Downloads/stoa-update*.zip 2>/dev/null | head -1)"
+  [ -n "$src" ] || { echo "No Stoa update found in ~/Downloads (stoa-desktop_*.deb or stoa-update.zip)." >&2; exit 1; }
+fi
+[ -f "$src" ] || { echo "Not found: $src" >&2; exit 1; }
+tmp="$(mktemp -d)"
+trap 'rm -rf -- "$tmp"' EXIT
+case "$src" in
+  *.zip)
+    python3 -c 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$src" "$tmp"
+    deb="$(ls "$tmp"/stoa-desktop_*.deb 2>/dev/null | sort -V | tail -1)"
+    [ -n "$deb" ] || { echo "That zip has no Stoa update package in it." >&2; exit 1; } ;;
+  *.deb) cp "$src" "$tmp/"; deb="$tmp/$(basename "$src")" ;;
+  *) echo "Expected a .deb or .zip: $src" >&2; exit 1 ;;
+esac
+chmod 0644 "$deb"; chmod 0755 "$tmp"
+echo "Installing $(basename "$deb")"
+sudo apt-get install -y "$deb"

@@ -14,6 +14,29 @@ permissions:
   contents: write
 
 jobs:
+  update:
+    # The in-place update package: install on a running Stoa with `stoa-os-update` or apt.
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the version number counts commits
+
+      - name: Build update package
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-pip
+          ./linux/build-update.sh
+          ls -lh linux/out
+
+      - name: Upload update package
+        uses: actions/upload-artifact@v4
+        with:
+          name: stoa-update
+          path: linux/out/stoa-desktop_*.deb
+          compression-level: 0
+
   iso:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04

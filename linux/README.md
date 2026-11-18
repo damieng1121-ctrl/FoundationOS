@@ -100,6 +100,19 @@ weaker apps.
 Code: `overlay/usr/lib/stoa/assistant/agent.py` (agent loop and tools),
 `overlay/usr/bin/stoa-assistant` (panel), `overlay/usr/bin/stoa-ai-app` (app runner).
 
+## Updating Stoa without reinstalling
+
+Every push builds **`stoa-update`** (GitHub → Actions → *Build Stoa ISO* → the run → Artifacts), a small
+package (`stoa-desktop_<version>_amd64.deb`, ~4 MB) with the whole desktop, apps, Stoa AI and settings.
+Download it on Stoa, then in a terminal:
+
+    sudo apt install ~/Downloads/stoa-desktop_*.deb      # first time (unzip the download first)
+    stoa-os-update                                       # every time after: finds the newest one in ~/Downloads, .zip or .deb
+
+Sign out and back in to use the new version. The kernel and Ubuntu base update separately through
+`stoa update` / the Updates app. Build it locally with `./linux/build-update.sh`. Removing the package
+(`sudo apt remove stoa-desktop`) restores Ubuntu's own copies of the config files Stoa replaces.
+
 ## Installing software
 
 Everything goes through **`fpkg`** (the Stoa Store is a graphical front end to it):
