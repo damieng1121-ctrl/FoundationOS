@@ -1,4 +1,7 @@
-"""Stoa AI: the agent loop (Claude API + tools that act on Stoa).
+"""Stoa AI: the agent loop (any supported AI provider + tools that act on Stoa).
+
+Providers: Claude (Anthropic SDK), and ChatGPT / Gemini / Ollama / any OpenAI-compatible service
+(OpenAI SDK with a base URL). The tools are the same for every provider.
 
 The UI talks to Agent through callbacks; every callback is invoked from the worker thread,
 so the UI must hop back to the GTK main loop itself.
@@ -16,7 +19,31 @@ sys.path.insert(0, os.environ.get("STOA_SHELL_DIR", "/usr/lib/stoa/shell"))
 
 import anthropic  # noqa: E402
 
+try:
+    import openai  # noqa: E402
+except ImportError:  # pragma: no cover - only Claude is available then
+    openai = None
+
 MODEL = "claude-opus-5-5"
+
+PROVIDERS = {
+    "claude": {"label": "Claude (Anthropic)", "kind": "anthropic", "base_url": None, "needs_key": True,
+               "model": MODEL, "key_hint": "sk-ant-…", "key_url": "https://console.anthropic.com/",
+               "privacy": "What you type is sent to Anthropic."},
+    "openai": {"label": "ChatGPT (OpenAI)", "kind": "openai", "base_url": None, "needs_key": True,
+               "model": "gpt-5", "key_hint": "sk-…", "key_url": "https://platform.openai.com/api-keys",
+               "privacy": "What you type is sent to OpenAI."},
+    "gemini": {"label": "Gemini (Google AI Studio)", "kind": "openai",
+               "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "needs_key": True,
+               "model": "gemini-2.5-flash", "key_hint": "AIza…", "key_url": "https://aistudio.google.com/apikey",
+               "privacy": "What you type is sent to Google."},
+    "ollama": {"label": "On this computer (Ollama)", "kind": "openai", "base_url": "http://localhost:11434/v1",
+               "needs_key": False, "model": "llama3.1", "key_hint": "", "key_url": "https://ollama.com/download",
+               "privacy": "Everything stays on this computer. Needs Ollama and a downloaded model."},
+    "custom": {"label": "Other OpenAI-compatible service", "kind": "openai", "base_url": "", "needs_key": True,
+               "model": "", "key_hint": "API key", "key_url": "",
+               "privacy": "What you type is sent to the service you enter."},
+}
 HOME = os.path.expanduser("~")
 CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "stoa")
 CONFIG = os.path.join(CONFIG_DIR, "assistant.json")
@@ -170,21 +197,53 @@ TOOLS = [
 REQUIRED = {t["name"]: t["input_schema"].get("required", []) for t in TOOLS}
 
 
-def load_key():
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return os.environ["ANTHROPIC_API_KEY"]
+def load_config():
+    """{"provider", "api_key", "model", "base_url"} - or None when Stoa AI isn't set up."""
+    cfg = {}
     try:
         with open(CONFIG) as f:
-            return json.load(f).get("api_key") or None
+            cfg = json.load(f)
     except (OSError, ValueError):
+        cfg = {}
+    if not cfg.get("api_key") and os.environ.get("ANTHROPIC_API_KEY"):
+        cfg = {"provider": "claude", "api_key": os.environ["ANTHROPIC_API_KEY"]}
+    if not cfg:
         return None
+    cfg.setdefault("provider", "claude")  # configs from before providers existed
+    prov = PROVIDERS.get(cfg["provider"])
+    if not prov or (prov["needs_key"] and not cfg.get("api_key")):
+        return None
+    if prov["kind"] == "openai" and not cfg.get("model"):
+        return None
+    return cfg
 
 
-def save_key(key):
+def save_config(provider, api_key="", model="", base_url=""):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     fd = os.open(CONFIG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
-        json.dump({"api_key": key.strip()}, f)
+        json.dump({"provider": provider, "api_key": api_key.strip(), "model": model.strip(),
+                   "base_url": base_url.strip()}, f)
+
+
+def openai_client(provider, api_key, base_url=""):
+    if openai is None:
+        raise RuntimeError("the OpenAI SDK isn't installed")
+    url = base_url or PROVIDERS[provider]["base_url"]
+    return openai.OpenAI(api_key=api_key or "ollama", base_url=url or None, max_retries=3)
+
+
+def list_models(provider, api_key, base_url=""):
+    """Model ids the provider offers, for the setup screen (raises on auth/network errors)."""
+    if PROVIDERS[provider]["kind"] == "anthropic":
+        return [MODEL]
+    ids = sorted({m.id for m in openai_client(provider, api_key, base_url).models.list()})
+    if provider == "openai":  # hide embeddings, audio, image and moderation models
+        ids = [i for i in ids if re.match(r"^(gpt|o\d|chatgpt)", i) and not re.search(
+            r"(audio|realtime|transcribe|tts|image|embedding|moderation|search)", i)]
+    if provider == "gemini":
+        ids = [i for i in ids if "gemini" in i and "embedding" not in i]
+    return ids
 
 
 def slug(name):
@@ -201,14 +260,31 @@ class Agent:
         self.messages = []
         self.busy = False
         self.client = None
+        self.provider = None
+        self.model = MODEL
 
     # ------------------------------------------------------------------ lifecycle
     def ready(self):
-        key = load_key()
-        if not key:
+        cfg = load_config()
+        if not cfg:
             return False
-        self.client = anthropic.Anthropic(api_key=key, max_retries=3)
+        provider = cfg["provider"]
+        if provider != self.provider:
+            self.messages = []  # conversation formats differ between providers
+        self.provider = provider
+        if PROVIDERS[provider]["kind"] == "anthropic":
+            self.client = anthropic.Anthropic(api_key=cfg["api_key"], max_retries=3)
+            self.model = MODEL
+        else:
+            self.client = openai_client(provider, cfg.get("api_key", ""), cfg.get("base_url", ""))
+            self.model = cfg["model"]
         return True
+
+    def describe(self):
+        if not self.provider:
+            return ""
+        label = PROVIDERS[self.provider]["label"].split(" (")[0]
+        return label if self.provider == "claude" else f"{label} · {self.model}"
 
     def reset(self):
         self.messages = []
@@ -223,7 +299,10 @@ class Agent:
     # ------------------------------------------------------------------ agent loop
     def _run(self):
         try:
-            self._loop()
+            if PROVIDERS[self.provider]["kind"] == "anthropic":
+                self._loop()
+            else:
+                self._run_openai()
         except anthropic.AuthenticationError:
             self.ui.on_error("That API key wasn't accepted. Open the menu (⋯) and choose 'Change API key'.")
         except anthropic.PermissionDeniedError:
@@ -237,6 +316,93 @@ class Agent:
         finally:
             self.busy = False
             self.ui.on_done()
+
+    def _run_openai(self):
+        try:
+            self._loop_openai()
+        except openai.AuthenticationError:
+            self.ui.on_error("That API key wasn't accepted. Open the menu (⋯) and choose 'Change AI provider'.")
+        except openai.NotFoundError:
+            self.ui.on_error(f"The model '{self.model}' wasn't found. Choose another in 'Change AI provider'.")
+        except openai.RateLimitError:
+            self.ui.on_error("The AI service is busy or your plan's limit was reached. Try again shortly.")
+        except openai.APIStatusError as e:
+            self.ui.on_error(f"The AI service returned an error ({e.status_code}). Try again shortly.")
+        except openai.APIConnectionError:
+            if self.provider == "ollama":
+                self.ui.on_error("Can't reach Ollama on this computer. Is it installed and running?")
+            else:
+                self.ui.on_error("Can't reach the AI service. Check your internet connection.")
+
+    def _loop_openai(self):
+        """Tool loop for OpenAI-format chat completions (ChatGPT, Gemini, Ollama, others)."""
+        tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
+                                                   "parameters": t["input_schema"]}} for t in TOOLS]
+        while True:
+            stream = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}] + self.messages,
+                tools=tools,
+                stream=True,
+            )
+            text, calls, finish, started = "", {}, None, False
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if delta and delta.content:
+                    if not started:
+                        self.ui.on_text_start()
+                        started = True
+                    text += delta.content
+                    self.ui.on_text(delta.content)
+                for tc in (delta.tool_calls or []) if delta else []:
+                    idx = tc.index if tc.index is not None else len(calls)
+                    c = calls.setdefault(idx, {"id": "", "name": "", "args": ""})
+                    if tc.id:
+                        c["id"] = tc.id
+                    if tc.function and tc.function.name and not c["name"]:
+                        c["name"] = tc.function.name
+                        self.ui.on_tool_start(c["name"])
+                    if tc.function and tc.function.arguments:
+                        c["args"] += tc.function.arguments
+                        self.ui.on_tool_progress(c["name"], len(c["args"]), tc.function.arguments)
+                if choice.finish_reason:
+                    finish = choice.finish_reason
+
+            ordered = [calls[i] for i in sorted(calls)]
+            for i, c in enumerate(ordered):
+                c["id"] = c["id"] or f"call_{len(self.messages)}_{i}"
+            assistant = {"role": "assistant", "content": text or None}
+            if ordered:
+                assistant["tool_calls"] = [{"id": c["id"], "type": "function",
+                                            "function": {"name": c["name"], "arguments": c["args"] or "{}"}}
+                                           for c in ordered]
+            self.messages.append(assistant)
+            if not ordered:
+                return
+            if finish == "length":
+                self.ui.on_error("That was too big to finish in one go. Try asking for a smaller version.")
+                self.messages.pop()
+                return
+
+            for c in ordered:
+                try:
+                    args = json.loads(c["args"] or "{}")
+                except ValueError:
+                    args = None
+                missing = [k for k in REQUIRED.get(c["name"], []) if not isinstance((args or {}).get(k), str)]
+                if not isinstance(args, dict) or missing or not hasattr(self, "t_" + c["name"]):
+                    self.messages.append({"role": "tool", "tool_call_id": c["id"],
+                                          "content": json.dumps({"INVALID_JSON": c["args"][:2000]})})
+                    continue
+                try:
+                    out, is_error = self._execute(c["name"], args), False
+                except Exception as e:  # noqa: BLE001 - report tool failures back to the model
+                    out, is_error = f"Error: {e}", True
+                self.ui.on_tool_done(c["name"], args, out, is_error)
+                self.messages.append({"role": "tool", "tool_call_id": c["id"], "content": out})
 
     def _loop(self):
         json_retries = 0

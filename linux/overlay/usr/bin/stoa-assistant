@@ -121,8 +121,9 @@ class Panel(Gtk.Window):
         h.pack_start(Gtk.Image.new_from_pixbuf(pb), False, False, 0)
         t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         t.pack_start(theme.css(Gtk.Label(label="Stoa AI", xalign=0), "ai-title"), False, False, 0)
-        t.pack_start(theme.css(Gtk.Label(label="Ask for anything, or ask it to build an app", xalign=0), "ai-sub"),
-                     False, False, 0)
+        self.subtitle = theme.css(Gtk.Label(label="Ask for anything, or ask it to build an app", xalign=0,
+                                            ellipsize=Pango.EllipsizeMode.END, max_width_chars=36), "ai-sub")
+        t.pack_start(self.subtitle, False, False, 0)
         h.pack_start(t, True, True, 0)
         menu = theme.css(Gtk.Button(label="⋯"), "fs-power-btn")
         menu.connect("clicked", self._menu)
@@ -133,28 +134,102 @@ class Panel(Gtk.Window):
         return h
 
     def _setup_page(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        from agent import PROVIDERS
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_border_width(22)
         box.pack_start(theme.css(Gtk.Label(label="Connect Stoa AI", xalign=0), "fs-h1"), False, False, 0)
         box.pack_start(theme.css(Gtk.Label(
-            label="Stoa AI is powered by Claude. Paste an Anthropic API key to turn it on - you can create "
-                  "one at console.anthropic.com.\n\nYour key is stored only on this computer. What you type to "
-                  "Stoa AI is sent to Anthropic to generate replies.",
+            label="Choose the AI you'd like Stoa to use. Any of them can build apps, install software and "
+                  "change settings for you. Your key is stored only on this computer.",
             xalign=0, wrap=True, max_width_chars=46), "fs-muted"), False, False, 0)
-        self.key_entry = theme.css(Gtk.Entry(placeholder_text="sk-ant-…", visibility=False), "ai-input")
+
+        self.provider_combo = Gtk.ComboBoxText()
+        for pid, p in PROVIDERS.items():
+            self.provider_combo.append(pid, p["label"])
+        self.provider_combo.connect("changed", self._provider_changed)
+        box.pack_start(self.provider_combo, False, False, 0)
+
+        self.url_entry = theme.css(Gtk.Entry(placeholder_text="Service address, e.g. https://openrouter.ai/api/v1"),
+                                   "ai-input")
+        box.pack_start(self.url_entry, False, False, 0)
+        self.key_entry = theme.css(Gtk.Entry(visibility=False), "ai-input")
         self.key_entry.connect("activate", self._save_key)
         box.pack_start(self.key_entry, False, False, 0)
+
+        mrow = Gtk.Box(spacing=8)
+        self.model_combo = Gtk.ComboBoxText.new_with_entry()
+        self.model_combo.get_child().set_placeholder_text("Model")
+        mrow.pack_start(self.model_combo, True, True, 0)
+        self.load_btn = theme.css(Gtk.Button(label="Load models"), "ai-deny")
+        self.load_btn.connect("clicked", self._load_models)
+        mrow.pack_start(self.load_btn, False, False, 0)
+        box.pack_start(mrow, False, False, 0)
+        self.model_row = mrow
+
+        self.privacy = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "fs-muted")
+        box.pack_start(self.privacy, False, False, 0)
         row = Gtk.Box(spacing=8)
-        get = theme.css(Gtk.Button(label="Get a key"), "ai-deny")
-        get.connect("clicked", lambda *_: Gio.AppInfo.launch_default_for_uri("https://console.anthropic.com/", None))
-        row.pack_start(get, False, False, 0)
+        self.get_btn = theme.css(Gtk.Button(label="Get a key"), "ai-deny")
+        self.get_btn.connect("clicked", lambda *_: self._open_key_page())
+        row.pack_start(self.get_btn, False, False, 0)
         save = theme.css(Gtk.Button(label="Turn on Stoa AI"), "ai-approve")
         save.connect("clicked", self._save_key)
         row.pack_end(save, False, False, 0)
         box.pack_start(row, False, False, 0)
-        self.setup_err = theme.css(Gtk.Label(xalign=0, wrap=True), "ai-error")
+        self.setup_err = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "ai-error")
         box.pack_start(self.setup_err, False, False, 0)
+        GLib.idle_add(lambda: (self.provider_combo.set_active_id("claude"), False)[1])
         return box
+
+    def _provider_changed(self, *_):
+        from agent import PROVIDERS
+        pid = self.provider_combo.get_active_id() or "claude"
+        p = PROVIDERS[pid]
+        self.url_entry.set_visible(pid == "custom")
+        self.key_entry.set_visible(p["needs_key"])
+        self.key_entry.set_placeholder_text(p["key_hint"] or "API key")
+        is_oai = p["kind"] == "openai"
+        self.model_row.set_visible(is_oai)
+        self.get_btn.set_label("Get Ollama" if pid == "ollama" else "Get a key")
+        self.get_btn.set_visible(bool(p["key_url"]))
+        self.privacy.set_text(p["privacy"])
+        self.model_combo.remove_all()
+        self.model_combo.get_child().set_text(p["model"] if is_oai else "")
+        self.setup_err.set_text("")
+
+    def _open_key_page(self):
+        from agent import PROVIDERS
+        url = PROVIDERS[self.provider_combo.get_active_id() or "claude"]["key_url"]
+        if url:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+
+    def _load_models(self, *_):
+        from agent import list_models
+        pid = self.provider_combo.get_active_id()
+        key, url = self.key_entry.get_text().strip(), self.url_entry.get_text().strip()
+        self.load_btn.set_sensitive(False)
+        self.setup_err.set_text("Loading models…")
+
+        def work():
+            try:
+                res = (list_models(pid, key, url), None)
+            except Exception as e:  # noqa: BLE001 - shown to the person
+                res = (None, str(e))
+            GLib.idle_add(lambda: (done(*res), False)[1])
+
+        def done(models, err):
+            self.load_btn.set_sensitive(True)
+            if err:
+                self.setup_err.set_text(f"Couldn't load models: {err[:160]}")
+                return
+            self.model_combo.remove_all()
+            for m in models:
+                self.model_combo.append_text(m)
+            self.setup_err.set_text(f"{len(models)} models available - pick one." if models else
+                                    "No chat models found for this key.")
+            if models:
+                self.model_combo.set_active(0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _chat_page(self):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -202,20 +277,41 @@ class Panel(Gtk.Window):
         else:
             self.stack.set_visible_child_name("setup")
             self.key_entry.grab_focus()
+        self._update_subtitle()
+
+    def _update_subtitle(self):
+        d = self.agent.describe()
+        self.subtitle.set_text(f"Using {d}" if d else "Ask for anything, or ask it to build an app")
 
     def _save_key(self, *_):
+        from agent import PROVIDERS, save_config
+        pid = self.provider_combo.get_active_id() or "claude"
+        p = PROVIDERS[pid]
         key = self.key_entry.get_text().strip()
-        if not key.startswith("sk-"):
-            self.setup_err.set_text("That doesn't look like an Anthropic API key (it should start with sk-).")
+        model = self.model_combo.get_child().get_text().strip()
+        url = self.url_entry.get_text().strip()
+        if p["needs_key"] and not key:
+            self.setup_err.set_text("Paste your API key first.")
             return
-        from agent import save_key
-        save_key(key)
+        if pid == "claude" and not key.startswith("sk-ant-"):
+            self.setup_err.set_text("That doesn't look like an Anthropic API key (it starts with sk-ant-).")
+            return
+        if pid == "custom" and not url.startswith(("http://", "https://")):
+            self.setup_err.set_text("Enter the service's address (it starts with https://).")
+            return
+        if p["kind"] == "openai" and not model:
+            self.setup_err.set_text("Choose a model - press 'Load models' to see what's available.")
+            return
+        save_config(pid, key, model, url)
         self.key_entry.set_text("")
+        self.agent.reset()
+        for c in self.list.get_children():
+            c.destroy()
         self._enter()
 
     def _menu(self, btn):
         m = Gtk.Menu()
-        for label, fn in [("New conversation", self._new_chat), ("Change API key", self._change_key),
+        for label, fn in [("New conversation", self._new_chat), ("Change AI provider", self._change_key),
                           ("My AI apps", lambda: self._send(text="List the apps you've built for me."))]:
             it = Gtk.MenuItem(label=label)
             it.connect("activate", lambda _i, fn=fn: fn())

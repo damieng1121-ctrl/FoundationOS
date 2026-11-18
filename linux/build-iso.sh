@@ -85,7 +85,7 @@ vendor_python() {
   python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check \
     --target "$ROOT/usr/lib/stoa/vendor" --python-version 3.12 --implementation cp \
     --platform manylinux2014_x86_64 --platform manylinux_2_17_x86_64 --only-binary=:all: \
-    "anthropic==2.8.0"
+    "anthropic==2.8.0" "openai==3.55.0"
   find "$ROOT/usr/lib/stoa/vendor" -name "__pycache__" -prune -exec rm -rf {} +
 }
 

@@ -67,8 +67,9 @@ another computer, with names and a look of its own:
 
 ## Stoa AI
 
-Stoa AI (the ✦ button on the bar, **Super+C**, or the Stoa menu) is an assistant built into the OS, powered by Claude
-(`claude-opus-5-5` through the Anthropic API). Ask for what you need and it does it:
+Stoa AI (the ✦ button on the bar, **Super+C**, or the Stoa menu) is an assistant built into the OS. It works with
+the AI you already use: **Claude** (Anthropic), **ChatGPT** (OpenAI), **Gemini** (Google AI Studio), a local model
+through **Ollama** (nothing leaves the computer), or any other OpenAI-compatible service. Ask for what you need and it does it:
 
 - **Builds apps on the spot.** "Make me a budget tracker", "build a Pomodoro timer", "I need a flashcard app
   for French verbs" - you watch it being written, it opens as soon as it's ready, and it's added to the Stoa menu.
@@ -79,10 +80,22 @@ Stoa AI (the ✦ button on the bar, **Super+C**, or the Stoa menu) is an assista
 - **Opens apps, changes settings** (volume, Wi-Fi, Bluetooth, airplane mode, brightness) and answers
   questions about your system.
 
-Setup: paste an Anthropic API key (from console.anthropic.com) when you first open it. The key is stored in
-`~/.config/stoa/assistant.json` (readable only by you); `ANTHROPIC_API_KEY` also works. What you type
-is sent to Anthropic to generate replies. Server-side model fallback is enabled, so a request one model
-declines can be answered by another.
+Setup: when you first open it, pick a provider, paste its API key (the **Get a key** button opens the right
+page) and optionally pick a model (**Load models** lists what your key can use). Change it later from the
+⋯ menu → **Change AI provider**. Settings are stored in `~/.config/stoa/assistant.json` (readable only by
+you); `ANTHROPIC_API_KEY` also works for Claude. What you type is sent to the provider you chose - the
+setup screen says which - except with Ollama, which runs on your own machine.
+
+| Provider | Default model | Key from |
+|---|---|---|
+| Claude | `claude-opus-5-5` | console.anthropic.com |
+| ChatGPT | `gpt-5` | platform.openai.com |
+| Gemini | `gemini-2.5-flash` | aistudio.google.com |
+| Ollama | `llama3.1` | no key - install Ollama, run `ollama pull llama3.1` |
+| Custom | you choose | any OpenAI-compatible endpoint (base URL + key) |
+
+Building apps needs a capable model; small local models can chat and run simple tools but may write
+weaker apps.
 
 Code: `overlay/usr/lib/stoa/assistant/agent.py` (agent loop and tools),
 `overlay/usr/bin/stoa-assistant` (panel), `overlay/usr/bin/stoa-ai-app` (app runner).
