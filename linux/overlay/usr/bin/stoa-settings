@@ -96,6 +96,8 @@ TILES = [
     ("Network & Wi-Fi", "network-wireless", ["nm-connection-editor"]),
     ("Sound", "audio-volume-high", ["pavucontrol"]),
     ("Bluetooth", "bluetooth", ["blueman-manager"]),
+    ("Printers", "printer", ["system-config-printer"]),
+    ("Scanner", "scanner", ["simple-scan"]),
     ("Wallpaper", "preferences-desktop-wallpaper", None),
     ("Software & Updates", "system-software-update", ["stoa-store"]),
     ("Install updates now", "software-update-available", ["stoa-updates"]),

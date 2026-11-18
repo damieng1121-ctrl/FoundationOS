@@ -132,6 +132,30 @@ graphics libraries, GameMode and a higher `vm.max_map_count` (needed by some gam
   choose the Ubuntu kernel under *Advanced options* at boot.
 - Secure Boot must be off for NVIDIA's driver and the Stoa kernel.
 
+### Game set-ups
+
+- **Jedi Academy (OpenJK)** - install *Star Wars Jedi Knight: Jedi Academy* in Steam, then this from the
+  Store. It downloads [OpenJK](https://github.com/JACoders/OpenJK) (modern engine, widescreen, bug fixes),
+  links your Steam game files and adds *Jedi Academy*, *Jedi Academy Multiplayer* and *Jedi Academy Mods* to
+  the menu. Mods: drop `.pk3` files into the mods folder (`~/.local/share/openjk/base`). Big multiplayer mods
+  like Movie Battles II have their own installers. Also finds a GOG/disc copy if you point it at the folder.
+- **Mod Organizer 2 (Fallout, Skyrim mods)** - pick a game (Fallout 3, New Vegas, 4, London, Skyrim,
+  Oblivion, Morrowind, Starfield, Cyberpunk 2077, Baldur's Gate 3...) and it runs
+  [MO2-LINT](https://github.com/Furglitch/modorganizer2-linux-installer), which installs Mod Organizer 2,
+  the script extender (F4SE, NVSE, SKSE...) and Nexus Mods "Mod Manager Download" support. Start the game
+  once from Steam first; afterwards set the game's Steam compatibility tool to the "MO2" one.
+- Code: `overlay/usr/bin/stoa-game-setup`.
+
+## Printing and scanning
+
+Printers on your network (Wi-Fi/Ethernet) and most USB printers appear automatically - modern printers
+use driverless printing (IPP Everywhere/AirPrint), so there's nothing to install. For older models,
+**Settings → Printers** (or Stoa AI: "add my printer") adds them, with about 14,500 models covered by the
+included HP (HPLIP), Brother, Samsung, Gutenprint (Canon/Epson inkjets), Ricoh, Kyocera, Lexmark and Xerox
+drivers. Scanning: **Settings → Scanner** (Simple Scan), including network scanners on all-in-ones.
+A few printers (some Canon and Epson models, Brother label printers) need the manufacturer's Linux driver
+`.deb` - double-click it or `stoa install ./driver.deb`.
+
 ## Updating Stoa without reinstalling
 
 Every push builds **`stoa-update`** (GitHub → Actions → *Build Stoa ISO* → the run → Artifacts), a small

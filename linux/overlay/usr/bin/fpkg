@@ -539,6 +539,9 @@ def install_target(target, assume_yes=False):
         install_catalog_windows(app)
     elif src == "bundle":
         install_target(app["download"]["url"])
+    elif src == "setup":
+        run(["stoa-game-setup", app["setup"]])
+        record(app["id"], source="setup", name=app["name"], setup=app["setup"])
     elif src == "drivers":
         root_helper("drivers")
         record(app["id"], source="drivers", name=app["name"])
@@ -584,6 +587,8 @@ def remove(name):
             os.remove(p)
     elif src == "drivers":
         print("Graphics drivers stay installed; they are part of the system.")
+    elif src == "setup":
+        run(["stoa-game-setup", "remove", info["setup"]], check=False)
     elif src == "rclone":
         run(["systemctl", "--user", "disable", "--now", info["unit"]], check=False)
         os.remove(os.path.join(HOME, ".config/systemd/user", info["unit"]))

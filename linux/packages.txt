@@ -85,6 +85,27 @@ libgl1-mesa-dri:i386
 vulkan-tools
 gamemode
 ubuntu-drivers-common
+libsdl2-2.0-0
+libopengl0
+# Printing and scanning: CUPS, automatic network printers (IPP Everywhere/AirPrint), common drivers
+cups
+cups-browsed
+cups-filters
+ipp-usb
+avahi-daemon
+libnss-mdns
+system-config-printer
+printer-driver-gutenprint
+printer-driver-hpcups
+hplip
+printer-driver-brlaser
+printer-driver-splix
+printer-driver-foo2zjs
+printer-driver-c2esp
+printer-driver-ptouch
+openprinting-ppds
+simple-scan
+sane-airscan
 # Stoa AI: runtime for apps it builds
 gir1.2-webkit2-4.1
 

@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""One-click game set-ups that need more than installing an app.
+
+  stoa-game-setup jedi-academy          Jedi Academy on OpenJK (modern engine), using your Steam/GOG game files
+  stoa-game-setup mod-organizer [game]  Mod Organizer 2 for Fallout, Skyrim and more (via MO2-LINT, for Steam/Heroic)
+  stoa-game-setup remove <name>         undo either of the above
+
+Runs as the user; nothing here needs administrator rights.
+"""
+import glob
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+
+HOME = os.path.expanduser("~")
+DATA = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local/share")
+APPS = os.path.join(DATA, "applications")
+GAMES = os.path.join(DATA, "stoa/games")
+OPENJK_DIR = os.path.join(GAMES, "openjk")
+OPENJK_URL = "https://github.com/JACoders/OpenJK/releases/download/latest/OpenJK-linux-x86_64.tar.gz"
+JKA_MODS = os.path.join(DATA, "openjk/base")  # OpenJK's own home folder: mods (.pk3) go here
+MO2_URL = "https://github.com/Furglitch/modorganizer2-linux-installer/releases/latest/download/mo2-lint"
+MO2_BIN = os.path.join(HOME, ".local/lib/stoa/mo2-lint")
+MO2_GAMES = [  # (MO2-LINT id, name people know it by)
+    ("fallout4", "Fallout 4"), ("falloutnv", "Fallout: New Vegas"), ("fallout3", "Fallout 3"),
+    ("fallout3_goty", "Fallout 3 - Game of the Year Edition"), ("falloutlondon", "Fallout London"),
+    ("skyrim_se", "Skyrim Special Edition / Anniversary"), ("skyrim", "Skyrim (2011)"),
+    ("oblivion", "Oblivion"), ("morrowind", "Morrowind"), ("starfield", "Starfield"),
+    ("cyberpunk2077", "Cyberpunk 2077"), ("baldursgate3", "Baldur's Gate 3"), ("witcher3", "The Witcher 3"),
+    ("dragonage", "Dragon Age: Origins"), ("valheim", "Valheim"), ("subnautica", "Subnautica"),
+]
+GUI = bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")) and shutil.which("zenity")
+
+
+# ------------------------------------------------------------------ helpers
+
+def say(msg):
+    print(msg, flush=True)
+
+
+def info(msg, title="Game set-up"):
+    say(msg)
+    if GUI:
+        subprocess.run(["zenity", "--info", "--no-wrap", f"--title={title}", f"--text={msg}"])
+
+
+def fail(msg):
+    print(f"error: {msg}", file=sys.stderr, flush=True)
+    if GUI:
+        subprocess.run(["zenity", "--error", "--no-wrap", "--title=Game set-up", f"--text={msg}"])
+    sys.exit(1)
+
+
+def download(url, dest):
+    say(f"Downloading {url.rsplit('/', 1)[-1]}...")
+    req = urllib.request.Request(url, headers={"User-Agent": "stoa-game-setup"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
+            shutil.copyfileobj(r, f)
+    except OSError as e:
+        fail(f"Couldn't download {url}\n{e}\nCheck the internet connection and try again.")
+
+
+def desktop(file_id, name, exec_, icon, comment="", categories="Game;", workdir=None):
+    os.makedirs(APPS, exist_ok=True)
+    lines = ["[Desktop Entry]", "Type=Application", f"Name={name}", f"Exec={exec_}", f"Icon={icon}",
+             f"Comment={comment}", f"Categories={categories}", "X-Stoa-GameSetup=true"]
+    if workdir:
+        lines.append(f"Path={workdir}")
+    with open(os.path.join(APPS, f"{file_id}.desktop"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def refresh_menu():
+    subprocess.run(["update-desktop-database", APPS], capture_output=True)
+
+
+def steam_libraries():
+    """Every Steam library folder (Flatpak and regular Steam, extra drives included)."""
+    roots = [os.path.join(HOME, ".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+             os.path.join(DATA, "Steam"), os.path.join(HOME, ".steam/steam")]
+    libs = []
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        libs.append(root)
+        vdf = os.path.join(root, "steamapps/libraryfolders.vdf")
+        if os.path.exists(vdf):
+            with open(vdf, errors="replace") as f:
+                libs += re.findall(r'"path"\s+"([^"]+)"', f.read())
+    seen, out = set(), []
+    for lib in libs:
+        real = os.path.realpath(lib)
+        if real not in seen and os.path.isdir(real):
+            seen.add(real)
+            out.append(real)
+    return out
+
+
+# ------------------------------------------------------------ Jedi Academy
+
+def find_jka_base():
+    """The game's base folder (holding assets0.pk3), from Steam, GOG/Heroic or ~/Games."""
+    candidates = [os.path.join(lib, "steamapps/common/Jedi Academy/GameData/base") for lib in steam_libraries()]
+    candidates += glob.glob(os.path.join(HOME, "Games/**/GameData/base"), recursive=True)
+    for c in candidates:
+        if os.path.exists(os.path.join(c, "assets0.pk3")):
+            return c
+    return None
+
+
+def ask_for_jka_base():
+    if not GUI:
+        return None
+    r = subprocess.run(["zenity", "--file-selection", "--directory",
+                        "--title=Choose the Jedi Academy GameData folder (it contains a 'base' folder)"],
+                       capture_output=True, text=True)
+    path = r.stdout.strip()
+    for c in (os.path.join(path, "base"), path):
+        if os.path.exists(os.path.join(c, "assets0.pk3")):
+            return c
+    return None
+
+
+def setup_jedi_academy():
+    base = find_jka_base()
+    if not base:
+        say("Jedi Academy's game files weren't found in Steam.")
+        if GUI and subprocess.run(["zenity", "--question", "--no-wrap", "--title=Jedi Academy",
+                                   "--ok-label=Choose folder", "--cancel-label=Cancel",
+                                   "--text=Stoa couldn't find Jedi Academy.\n\nInstall it in Steam first "
+                                   "(Star Wars Jedi Knight: Jedi Academy), then run this again - or choose "
+                                   "the game folder yourself if it's somewhere else (GOG, a disc install)."]
+                                  ).returncode == 0:
+            base = ask_for_jka_base()
+        if not base:
+            fail("Jedi Academy's game files (assets0.pk3) weren't found.\n"
+                 "Install the game in Steam, then run the set-up again.")
+    say(f"Using game files in {base}")
+
+    with tempfile.TemporaryDirectory() as td:
+        archive = os.path.join(td, "openjk.tar.gz")
+        download(OPENJK_URL, archive)
+        new = OPENJK_DIR + ".new"
+        shutil.rmtree(new, ignore_errors=True)
+        os.makedirs(new)
+        with tarfile.open(archive) as t:
+            t.extractall(new, filter="data")
+    # Some builds put everything in a JediAcademy/ folder.
+    inner = os.path.join(new, "JediAcademy")
+    if os.path.isdir(inner) and not os.path.exists(os.path.join(new, "openjk.x86_64")):
+        for name in os.listdir(inner):
+            shutil.move(os.path.join(inner, name), new)
+    for exe in ("openjk.x86_64", "openjk_sp.x86_64"):
+        if not os.path.exists(os.path.join(new, exe)):
+            shutil.rmtree(new, ignore_errors=True)
+            fail(f"The OpenJK download didn't contain {exe}.")
+    shutil.rmtree(OPENJK_DIR, ignore_errors=True)
+    os.rename(new, OPENJK_DIR)
+
+    # Link the original game data in, so nothing is copied and Steam can still update it.
+    jbase = os.path.join(OPENJK_DIR, "base")
+    os.makedirs(jbase, exist_ok=True)
+    for pk3 in glob.glob(os.path.join(base, "assets*.pk3")):
+        dst = os.path.join(jbase, os.path.basename(pk3))
+        if not os.path.exists(dst):
+            os.symlink(pk3, dst)
+    os.makedirs(JKA_MODS, exist_ok=True)
+    with open(os.path.join(JKA_MODS, "PUT MODS HERE.txt"), "w") as f:
+        f.write("Put Jedi Academy mods (.pk3 files) in this folder, then start the game.\n"
+                "Single-player and multiplayer both load them. Remove a .pk3 to turn that mod off.\n")
+    for exe in ("openjk.x86_64", "openjk_sp.x86_64"):
+        os.chmod(os.path.join(OPENJK_DIR, exe), 0o755)
+
+    icon = "applications-games"
+    desktop("stoa-jka-sp", "Jedi Academy", os.path.join(OPENJK_DIR, "openjk_sp.x86_64"), icon,
+            "Star Wars Jedi Knight: Jedi Academy (single-player, OpenJK)", workdir=OPENJK_DIR)
+    desktop("stoa-jka-mp", "Jedi Academy Multiplayer", os.path.join(OPENJK_DIR, "openjk.x86_64"), icon,
+            "Star Wars Jedi Knight: Jedi Academy (multiplayer, OpenJK)", workdir=OPENJK_DIR)
+    desktop("stoa-jka-mods", "Jedi Academy Mods", f'xdg-open "{JKA_MODS}"', "folder-games",
+            "Open the folder for Jedi Academy mods (.pk3)", categories="Game;")
+    refresh_menu()
+    info("Jedi Academy is ready.\n\n"
+         "• Play: 'Jedi Academy' and 'Jedi Academy Multiplayer' in the Stoa menu.\n"
+         "• Mods: open 'Jedi Academy Mods' and drop .pk3 files into that folder.\n"
+         "• Run this set-up again any time to update OpenJK.", "Jedi Academy")
+
+
+def remove_jedi_academy():
+    shutil.rmtree(OPENJK_DIR, ignore_errors=True)
+    for fid in ("stoa-jka-sp", "stoa-jka-mp", "stoa-jka-mods"):
+        p = os.path.join(APPS, f"{fid}.desktop")
+        if os.path.exists(p):
+            os.remove(p)
+    refresh_menu()
+    say(f"Removed OpenJK. Your mods and saves are kept in {os.path.dirname(JKA_MODS)}.")
+
+
+# ------------------------------------------------------------ Mod Organizer 2
+
+def get_mo2_lint():
+    os.makedirs(os.path.dirname(MO2_BIN), exist_ok=True)
+    tmp = MO2_BIN + ".download"
+    download(MO2_URL, tmp)
+    os.chmod(tmp, 0o755)
+    os.replace(tmp, MO2_BIN)
+
+
+def pick_game():
+    if not GUI:
+        fail("Name the game: stoa-game-setup mod-organizer <" + "|".join(g for g, _ in MO2_GAMES) + ">")
+    args = ["zenity", "--list", "--title=Mod Organizer 2", "--width=460", "--height=520",
+            "--text=Which game do you want to mod?\nIt must be installed in Steam (or Heroic) and "
+            "started once first.", "--column=id", "--column=Game", "--hide-column=1", "--print-column=1"]
+    for gid, name in MO2_GAMES:
+        args += [gid, name]
+    r = subprocess.run(args, capture_output=True, text=True)
+    return r.stdout.strip().split("|")[0] or None
+
+
+def setup_mod_organizer(game=None):
+    game = game or pick_game()
+    if not game:
+        return
+    names = dict(MO2_GAMES)
+    get_mo2_lint()
+    target = os.path.join(HOME, "Games/Mod Organizer", names.get(game, game).split(" / ")[0].replace(":", ""))
+    script = (f'echo "Setting up Mod Organizer 2 for {names.get(game, game)}"; echo; '
+              f'"{MO2_BIN}" install {game} "{target}" --script-extender; '
+              'echo; echo "When it says it has finished: in Steam, open the game\'s Properties > Compatibility, '
+              'tick Force a specific compatibility tool and choose the MO2 one. Launching the game from '
+              'Steam then opens Mod Organizer."; echo; read -p "Press Enter to close" _')
+    desktop(f"stoa-mo2-{game}", f"Mod Organizer setup: {names.get(game, game)}",
+            f"stoa-game-setup mod-organizer {game}", "applications-games",
+            "Set up or repair Mod Organizer 2 for this game")
+    refresh_menu()
+    if GUI and shutil.which("foot"):
+        subprocess.run(["foot", "--title=Mod Organizer 2 set-up", "sh", "-c", script])
+    else:
+        subprocess.run(["sh", "-c", script])
+
+
+def remove_mod_organizer():
+    for p in glob.glob(os.path.join(APPS, "stoa-mo2-*.desktop")):
+        os.remove(p)
+    refresh_menu()
+    if os.path.exists(MO2_BIN):
+        say("Your Mod Organizer instances stay in ~/Games/Mod Organizer. To remove one completely, run:\n"
+            f"  {MO2_BIN} uninstall")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help"):
+        print(__doc__)
+        return
+    if a[0] == "jedi-academy":
+        setup_jedi_academy()
+    elif a[0] == "mod-organizer":
+        setup_mod_organizer(a[1] if len(a) > 1 else None)
+    elif a[0] == "remove" and len(a) > 1:
+        {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer}.get(
+            a[1], lambda: fail(f"unknown set-up {a[1]}"))()
+    else:
+        fail(f"unknown command: {' '.join(a)}")
+
+
+if __name__ == "__main__":
+    main()

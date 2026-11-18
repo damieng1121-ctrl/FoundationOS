@@ -73,7 +73,10 @@ Installed-Size: ${size}
 Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-gtk-3.0,
  gir1.2-gtklayershell-0.1, gir1.2-webkit2-4.1, labwc, foot, thunar, grim, slurp, swaylock,
  wl-clipboard, wlr-randr, libnotify-bin, xdg-utils, flatpak, mesa-vulkan-drivers, gamemode,
- ubuntu-drivers-common
+ ubuntu-drivers-common, libsdl2-2.0-0, libopengl0, cups, cups-browsed, cups-filters, ipp-usb,
+ avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
+ printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
+ printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings

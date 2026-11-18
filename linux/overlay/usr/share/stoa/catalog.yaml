@@ -222,6 +222,24 @@ apps:
      flatpak: org.prismlauncher.PrismLauncher, description: "Minecraft: Java Edition, with mods and multiple installs."}
   - {id: retroarch, name: RetroArch, category: Games, icon: org.libretro.RetroArch, source: flatpak,
      flatpak: org.libretro.RetroArch, description: "Classic console and arcade emulators in one app."}
+  - id: jedi-academy
+    name: "Jedi Academy (OpenJK)"
+    category: Games
+    icon: applications-games
+    source: setup
+    setup: jedi-academy
+    description: >-
+      Star Wars Jedi Knight: Jedi Academy on OpenJK - modern engine, widescreen, mods. Uses your Steam
+      copy: install the game in Steam first.
+  - id: mod-organizer
+    name: "Mod Organizer 2 (Fallout, Skyrim mods)"
+    category: Games
+    icon: applications-games
+    source: setup
+    setup: mod-organizer
+    description: >-
+      Mod Fallout 3, New Vegas, 4, Skyrim, Oblivion, Starfield and more, with script extenders and
+      Nexus Mods downloads. Install the game in Steam and start it once first.
   - id: graphics-drivers
     name: Graphics drivers
     category: Games
