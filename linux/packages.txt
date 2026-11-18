@@ -78,6 +78,13 @@ xdg-desktop-portal-wlr
 xdg-desktop-portal-gtk
 xdg-utils
 zenity
+# Games: Vulkan (Proton/DXVK), 32-bit graphics for Windows games, GameMode, driver detection
+mesa-vulkan-drivers
+mesa-vulkan-drivers:i386
+libgl1-mesa-dri:i386
+vulkan-tools
+gamemode
+ubuntu-drivers-common
 # Stoa AI: runtime for apps it builds
 gir1.2-webkit2-4.1
 

@@ -72,7 +72,8 @@ Maintainer: Stoa <stoa@localhost>
 Installed-Size: ${size}
 Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-gtk-3.0,
  gir1.2-gtklayershell-0.1, gir1.2-webkit2-4.1, labwc, foot, thunar, grim, slurp, swaylock,
- wl-clipboard, wlr-randr, libnotify-bin, xdg-utils, flatpak
+ wl-clipboard, wlr-randr, libnotify-bin, xdg-utils, flatpak, mesa-vulkan-drivers, gamemode,
+ ubuntu-drivers-common
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings

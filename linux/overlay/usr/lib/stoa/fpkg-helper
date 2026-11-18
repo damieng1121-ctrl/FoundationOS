@@ -55,6 +55,27 @@ def repo_add(app_id):
     sh(["apt-get", "update"])
 
 
+def install_drivers():
+    """Recommended graphics (and other) drivers via ubuntu-drivers. NVIDIA's driver is built for the
+    running kernel with DKMS, so the Stoa kernel's headers (shipped in /usr/share/stoa/kernel) go first."""
+    sh(["apt-get", "update"])
+    sh(APT + ["install", "ubuntu-drivers-common"])
+    release = os.uname().release
+    if "stoa" in release:
+        import glob
+        if not os.path.isdir(f"/usr/src/linux-headers-{release}"):
+            debs = sorted(glob.glob(f"/usr/share/stoa/kernel/linux-headers-{release}_*.deb"))
+            if debs:
+                sh(APT + ["install", "dkms", debs[-1]])
+            else:
+                print(f"note: no headers for {release}; NVIDIA's driver will work after restarting into "
+                      "the Ubuntu kernel (Advanced options at boot)", flush=True)
+    r = subprocess.run(["ubuntu-drivers", "list"], env=ENV, capture_output=True, text=True)
+    print(r.stdout.strip() or "No extra drivers are needed for this computer.", flush=True)
+    if r.stdout.strip():
+        sh(["ubuntu-drivers", "install"])
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("fpkg-helper must run as root")
@@ -81,6 +102,8 @@ def main():
         sh(APT + ["autoremove"])
         if os.path.exists("/usr/bin/flatpak"):
             subprocess.run(["flatpak", "update", "--system", "-y", "--noninteractive"], env=ENV)
+    elif op == "drivers":
+        install_drivers()
     elif op == "refresh":
         sh(["apt-get", "update"])
     else:

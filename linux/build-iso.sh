@@ -97,6 +97,12 @@ stage_kernel() {
     log "Including the Stoa kernel: $(ls "$dir"/linux-image-*stoa*.deb | xargs -n1 basename)"
     mkdir -p "$ROOT/tmp/stoa-kernel"
     cp "$dir"/linux-image-*stoa*.deb "$ROOT/tmp/stoa-kernel/"
+    # Headers stay on disk (not installed) for building NVIDIA's driver when someone needs it.
+    rm -rf "$ROOT/usr/share/stoa/kernel"
+    if ls "$dir"/linux-headers-*stoa*.deb >/dev/null 2>&1; then
+      mkdir -p "$ROOT/usr/share/stoa/kernel"
+      cp "$dir"/linux-headers-*stoa*.deb "$ROOT/usr/share/stoa/kernel/"
+    fi
   else
     log "No Stoa kernel packages in $dir - using Ubuntu's stock kernel"
   fi

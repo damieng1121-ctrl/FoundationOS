@@ -60,7 +60,7 @@ jobs:
         run: |
           tag="$(gh release list --limit 50 --json tagName --jq '.[].tagName' | grep '^kernel-' | sort -V | tail -1 || true)"
           if [ -n "$tag" ]; then
-            gh release download "$tag" --pattern 'linux-image-*.deb' --dir linux/kernel-debs
+            gh release download "$tag" --pattern 'linux-image-*.deb' --pattern 'linux-headers-*.deb' --dir linux/kernel-debs
             echo "Using Stoa kernel $tag"; ls -l linux/kernel-debs
           else
             echo "::warning::No Stoa kernel release yet - this ISO uses Ubuntu's stock kernel"

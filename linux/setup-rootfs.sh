@@ -15,7 +15,8 @@ apt-get install -y --no-install-recommends \
   xserver-xorg-core xserver-xorg-input-libinput xserver-xorg-video-fbdev \
   xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
   systemd-resolved x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
-  gir1.2-webkit2-4.1
+  gir1.2-webkit2-4.1 \
+  mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 vulkan-tools gamemode ubuntu-drivers-common
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
 rm -rf /var/cache/stoa/debs

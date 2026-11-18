@@ -539,6 +539,10 @@ def install_target(target, assume_yes=False):
         install_catalog_windows(app)
     elif src == "bundle":
         install_target(app["download"]["url"])
+    elif src == "drivers":
+        root_helper("drivers")
+        record(app["id"], source="drivers", name=app["name"])
+        ok("Drivers are set up. Restart the computer to start using them.")
     else:
         die(f"unknown source {src}")
     for extra in app.get("also", []):
@@ -578,6 +582,8 @@ def remove(name):
         p = os.path.join(APPS_DIR, f"fpkg-{key}.desktop")
         if os.path.exists(p):
             os.remove(p)
+    elif src == "drivers":
+        print("Graphics drivers stay installed; they are part of the system.")
     elif src == "rclone":
         run(["systemctl", "--user", "disable", "--now", info["unit"]], check=False)
         os.remove(os.path.join(HOME, ".config/systemd/user", info["unit"]))

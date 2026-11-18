@@ -100,6 +100,38 @@ weaker apps.
 Code: `overlay/usr/lib/stoa/assistant/agent.py` (agent loop and tools),
 `overlay/usr/bin/stoa-assistant` (panel), `overlay/usr/bin/stoa-ai-app` (app runner).
 
+## Games
+
+Stoa runs Windows games the same way the Steam Deck does: through **Proton** (Valve's Windows
+compatibility layer, built on Wine and DXVK/VKD3D, which turn DirectX into Vulkan).
+
+| Get | For |
+|---|---|
+| **Steam** | Your Steam library. Most Windows games run through Proton (Steam → Settings → Compatibility → enable for all titles). |
+| **Heroic Games Launcher** | Epic Games, GOG and Amazon Prime Gaming. |
+| **Lutris** | Battle.net (World of Warcraft, Diablo, Overwatch), EA app, Ubisoft Connect, emulators. |
+| **ProtonUp-Qt** | Newer Proton builds (GE-Proton) that fix specific games. |
+| **Prism Launcher / RetroArch** | Minecraft Java Edition / classic consoles. |
+| **Graphics drivers** | Installs NVIDIA's driver when you have an NVIDIA card (AMD and Intel work out of the box). Restart afterwards. |
+
+All are in the Stoa Store (Games), `stoa install <id>`, or ask Stoa AI ("install Steam"). Vulkan, 32-bit
+graphics libraries, GameMode and a higher `vm.max_map_count` (needed by some games) are already set up.
+
+**What works, honestly:**
+- Most single-player and many online Windows games, including MMOs like *Final Fantasy XIV*, *Guild Wars 2*,
+  *Elder Scrolls Online*, and *World of Warcraft* via Battle.net in Lutris.
+  Check a specific game on [ProtonDB](https://www.protondb.com).
+- **Won't run:** games whose anti-cheat blocks Linux, e.g. *Valorant*, *League of Legends* (Vanguard),
+  *Fortnite*, *Destiny 2*, *Lost Ark*, *Rainbow Six Siege*, *Call of Duty* multiplayer, *Battlefield 2042*. This is the
+  publisher's choice, not something Stoa can fix. Live status: [areweanticheatyet.com](https://areweanticheatyet.com).
+- **Older hardware:** Proton needs a Vulkan-capable GPU - roughly Intel HD 500 series (Skylake, 2015) or
+  newer, AMD GCN (HD 7000, 2012) or newer, NVIDIA GTX 600 or newer. Older GPUs run native Linux games and
+  older DirectX 9 titles through Wine's OpenGL path, with lower performance.
+- **NVIDIA with the Stoa kernel:** the driver is compiled for the Stoa kernel during install (DKMS), which
+  needs the Stoa kernel's headers - included on ISOs built from now on. On older installs, or if it fails,
+  choose the Ubuntu kernel under *Advanced options* at boot.
+- Secure Boot must be off for NVIDIA's driver and the Stoa kernel.
+
 ## Updating Stoa without reinstalling
 
 Every push builds **`stoa-update`** (GitHub → Actions → *Build Stoa ISO* → the run → Artifacts), a small

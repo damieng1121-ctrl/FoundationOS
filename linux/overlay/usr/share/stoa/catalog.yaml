@@ -210,7 +210,26 @@ apps:
 
   # ------------------------------------------------------------------ Games
   - {id: steam, name: Steam, category: Games, icon: com.valvesoftware.Steam, source: flatpak,
-     flatpak: com.valvesoftware.Steam, description: "Games, including many Windows games via Proton."}
+     flatpak: com.valvesoftware.Steam,
+     description: "Your Steam library, including most Windows games through Proton (turn it on in Settings > Compatibility)."}
+  - {id: heroic, name: Heroic Games Launcher, category: Games, icon: com.heroicgameslauncher.hgl, source: flatpak,
+     flatpak: com.heroicgameslauncher.hgl, description: "Play your Epic Games, GOG and Amazon Prime Gaming libraries."}
+  - {id: lutris, name: Lutris, category: Games, icon: net.lutris.Lutris, source: flatpak, flatpak: net.lutris.Lutris,
+     description: "One place for games from Battle.net, EA app, Ubisoft Connect, GOG, emulators and more."}
+  - {id: protonup-qt, name: ProtonUp-Qt, category: Games, icon: net.davidotek.pupgui2, source: flatpak,
+     flatpak: net.davidotek.pupgui2, description: "Add newer Proton/Wine versions (GE-Proton) to Steam, Heroic and Lutris."}
+  - {id: prism-launcher, name: Prism Launcher, category: Games, icon: org.prismlauncher.PrismLauncher, source: flatpak,
+     flatpak: org.prismlauncher.PrismLauncher, description: "Minecraft: Java Edition, with mods and multiple installs."}
+  - {id: retroarch, name: RetroArch, category: Games, icon: org.libretro.RetroArch, source: flatpak,
+     flatpak: org.libretro.RetroArch, description: "Classic console and arcade emulators in one app."}
+  - id: graphics-drivers
+    name: Graphics drivers
+    category: Games
+    icon: video-display
+    source: drivers
+    description: >-
+      Installs the best drivers for your graphics card (NVIDIA's own driver where needed; AMD and Intel
+      are built in). Restart afterwards.
 
   # ---------------------------------------------------------------- Utilities
   - {id: 7zip, name: 7-Zip, category: Utilities, icon: 7zip, source: apt, packages: [7zip], description: "File archiver."}
