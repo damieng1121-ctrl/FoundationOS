@@ -32,6 +32,7 @@ button.fs-install:hover { background-color: #34a06f; }
 .fs-tb-btn:hover { background-color: rgba(255, 255, 255, 0.08); }
 .fs-tb-btn:active, .fs-tb-btn.fs-pressed { background-color: rgba(255, 255, 255, 0.14); }
 .fs-tb-btn.fs-active { background-color: rgba(79, 140, 255, 0.18); }
+button.fs-app { padding: 0; min-width: 46px; min-height: 44px; }
 button.fs-start {
   border-radius: 50%; padding: 2px; min-width: 38px; min-height: 38px; margin: 0 4px;
   background-color: transparent;

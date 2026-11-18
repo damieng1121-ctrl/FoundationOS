@@ -16,9 +16,7 @@ COLS = 6
 
 
 def app_icon(a, size=36):
-    img = Gtk.Image.new_from_gicon(apps.icon_for(a), Gtk.IconSize.DIALOG)
-    img.set_pixel_size(size)
-    return img
+    return apps.sized_icon(apps.icon_for(a), size)
 
 
 def recent_files(limit=6):
@@ -131,8 +129,7 @@ class StartMenu(Popup):
             b = theme.css(Gtk.Button(), "fs-row")
             h = Gtk.Box(spacing=10)
             ct, _ = Gio.content_type_guess(p, None)
-            img = Gtk.Image.new_from_gicon(Gio.content_type_get_icon(ct), Gtk.IconSize.DND)
-            img.set_pixel_size(28)
+            img = apps.sized_icon(Gio.content_type_get_icon(ct), 28)
             h.pack_start(img, False, False, 0)
             t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             t.pack_start(Gtk.Label(label=os.path.basename(p), xalign=0, max_width_chars=24,

@@ -185,11 +185,13 @@ class Taskbar(Gtk.Window):
         self.app_box.show_all()
 
     def _app_button(self, a, key, ws):
-        b = theme.css(Gtk.Button(), "fs-tb-btn")
-        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        img = Gtk.Image.new_from_gicon(apps.icon_for(a), Gtk.IconSize.LARGE_TOOLBAR)
-        img.set_pixel_size(26)
-        v.pack_start(img, False, False, 0)
+        b = theme.css(Gtk.Button(), "fs-tb-btn", "fs-app")
+        b.set_size_request(46, 44)
+        b.set_valign(Gtk.Align.CENTER)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        v.set_halign(Gtk.Align.CENTER)
+        v.set_valign(Gtk.Align.CENTER)
+        v.pack_start(apps.sized_icon(apps.icon_for(a), 26), False, False, 0)
         dot = theme.css(Gtk.Box(), "fs-dot")
         dot.set_halign(Gtk.Align.CENTER)
         active = any(w.get("active") and not w.get("minimized") for w in ws)

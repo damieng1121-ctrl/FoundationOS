@@ -150,8 +150,7 @@ class Desktop(Gtk.Window):
             v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             v.set_size_request(CELL_W - 8, CELL_H - 8)
             frame = theme.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4), "fs-desk-icon")
-            img = Gtk.Image.new_from_gicon(it.gicon, Gtk.IconSize.DIALOG)
-            img.set_pixel_size(48)
+            img = apps.sized_icon(it.gicon, 48)
             frame.pack_start(img, False, False, 2)
             lbl = theme.css(Gtk.Label(label=it.name, max_width_chars=12, lines=2, wrap=True,
                                       wrap_mode=Pango.WrapMode.WORD_CHAR, ellipsize=Pango.EllipsizeMode.END,

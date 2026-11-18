@@ -106,17 +106,56 @@ def for_app_id(app_id):
             break
     if not found:
         low = app_id.lower()
+        best, best_score = None, 0
         for a in Gio.AppInfo.get_all():
             if not isinstance(a, Gio.DesktopAppInfo):
                 continue
             wm = (a.get_startup_wm_class() or "").lower()
             aid = (a.get_id() or "").lower().removesuffix(".desktop")
             exe = os.path.basename((a.get_executable() or "")).lower()
-            if low in (wm, aid, exe) or aid.endswith("." + low):
-                found = a
-                break
+            score = 0
+            if wm == low:
+                score = 50
+            elif aid == low or aid.endswith("." + low):
+                score = 40
+            elif exe == low:
+                score = 30
+            elif low in aid.split(".")[-1].split("-"):
+                score = 10
+            if not score:
+                continue
+            if a.should_show():
+                score += 5
+            if any(w in aid for w in ("settings", "preferences", "prefs", "server", "client")):
+                score -= 8
+            if score > best_score:
+                best, best_score = a, score
+        found = best
     _wmclass_cache[app_id] = found
     return found
+
+
+def sized_icon(gicon, size):
+    """A Gtk.Image of exactly size x size pixels, whatever sizes the icon's files come in."""
+    from gi.repository import GdkPixbuf, Gtk
+    theme = Gtk.IconTheme.get_default()
+    pb = None
+    try:
+        info = theme.lookup_by_gicon(gicon, size, Gtk.IconLookupFlags.FORCE_SIZE) if gicon else None
+        if info:
+            pb = info.load_icon()
+    except GLib.Error:
+        pb = None
+    if pb is None:
+        try:
+            pb = theme.load_icon("application-x-executable", size, Gtk.IconLookupFlags.FORCE_SIZE)
+        except GLib.Error:
+            return Gtk.Image.new_from_icon_name("application-x-executable", Gtk.IconSize.DIALOG)
+    if pb.get_width() != size or pb.get_height() != size:
+        pb = pb.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
+    img = Gtk.Image.new_from_pixbuf(pb)
+    img.set_size_request(size, size)
+    return img
 
 
 def icon_for(a, fallback="application-x-executable"):
