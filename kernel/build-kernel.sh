@@ -8,7 +8,7 @@
 #
 # Output: kernel/out/linux-image-<release>_*.deb and linux-headers-<release>_*.deb
 # Requires (Ubuntu 24.04): build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod
-#   zstd dpkg-dev debhelper python3-pil, plus deb-src entries for noble, noble-updates and noble-security.
+#   zstd dpkg-dev debhelper python3-pil libdw-dev, plus deb-src entries for noble, noble-updates and noble-security.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

@@ -6,7 +6,7 @@ boot logo.
 
 ```
 $ uname -r
-7.0.0-43-stoa
+7.0.14-43-stoa
 ```
 
 ## What's different from Ubuntu's kernel
@@ -51,7 +51,7 @@ The full configuration change is [`stoa.config`](stoa.config); edit it to tune t
 
 ```bash
 # Ubuntu 24.04, with deb-src enabled for noble, noble-updates and noble-security
-sudo apt install build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod zstd dpkg-dev debhelper python3-pil
+sudo apt install build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod zstd dpkg-dev debhelper python3-pil libdw-dev
 ./build-kernel.sh                          # latest linux-hwe-7.0 source
 ./build-kernel.sh 7.0.0-43.43~24.04.1      # or a specific one
 CONFIG_ONLY=1 ./build-kernel.sh            # just produce and check the merged config
