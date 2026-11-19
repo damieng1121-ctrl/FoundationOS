@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o
   xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
   systemd-resolved x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
   gir1.2-webkit2-4.1 \
-  systemd-zram-generator \
+  systemd-zram-generator libvulkan1 libgomp1 \
   mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 vulkan-tools gamemode ubuntu-drivers-common \
   libsdl2-2.0-0 libopengl0 \
   cups cups-browsed cups-filters ipp-usb avahi-daemon libnss-mdns system-config-printer \

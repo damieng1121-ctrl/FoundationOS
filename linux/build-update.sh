@@ -51,6 +51,8 @@ fi
 [[ -x "$bin" ]] || { echo "stoa-toplevels is not built: install Rust (https://rustup.rs)" >&2; exit 1; }
 install -D -m 0755 "$bin" "$STAGE/usr/lib/stoa/stoa-toplevels"
 
+"$HERE/build-llama.sh" "$STAGE/usr/lib/stoa/llama"   # Stoa AI Local engine
+
 log "Adding Stoa AI libraries"
 python3 -m pip install --quiet --no-cache-dir --disable-pip-version-check \
   --target "$STAGE/usr/lib/stoa/vendor" --python-version 3.12 --implementation cp \
@@ -78,7 +80,7 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
  printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
- systemd-zram-generator, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
+ systemd-zram-generator, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings

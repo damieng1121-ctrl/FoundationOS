@@ -29,6 +29,11 @@ except ImportError:  # pragma: no cover - only Claude is available then
 MODEL = "claude-opus-5-5"
 
 PROVIDERS = {
+    "local": {"label": "Stoa AI Local - on this PC, private", "kind": "openai",
+              "base_url": "http://127.0.0.1:8089/v1", "needs_key": False, "local": True,
+              "model": "stoa-local", "key_hint": "", "key_url": "",
+              "privacy": "Runs entirely on this PC: nothing you type leaves it, and it works offline. Needs a "
+                         "one-time download."},
     "claude": {"label": "Claude (Anthropic)", "kind": "anthropic", "base_url": None, "needs_key": True,
                "model": MODEL, "key_hint": "sk-ant-…", "key_url": "https://console.anthropic.com/",
                "privacy": "What you type is sent to Anthropic."},
@@ -338,7 +343,27 @@ def load_config():
         return None
     if prov["kind"] == "openai" and not cfg.get("model"):
         return None
+    if prov.get("local") and not local_status().get("installed"):
+        return None
     return cfg
+
+
+def local_status():
+    """Stoa AI Local's state (models installed, running, recommendation) - {} if it isn't available."""
+    try:
+        r = subprocess.run(["stoa-ai-local", "status"], capture_output=True, text=True, timeout=20)
+        return json.loads(r.stdout) if r.returncode == 0 else {}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {}
+
+
+def local_ensure():
+    """Start the on-device engine if needed; returns an error message or None."""
+    try:
+        r = subprocess.run(["stoa-ai-local", "ensure"], capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"The local AI engine didn't start ({e})."
+    return None if r.returncode == 0 else (r.stderr.strip() or "The local AI engine didn't start.")
 
 
 def save_config(provider, api_key="", model="", base_url="", refresh_token="", expires_at=0):
@@ -464,6 +489,8 @@ class Agent:
         if not self.provider:
             return ""
         label = PROVIDERS[self.provider]["label"].split(" (")[0].split(" - ")[0]
+        if PROVIDERS[self.provider].get("local"):
+            return f"{label} · {local_status().get('model') or 'on this PC'}"
         return label if self.provider == "claude" else f"{label} · {self.model}"
 
     def reset(self):
@@ -498,6 +525,11 @@ class Agent:
             self.ui.on_done()
 
     def _run_openai(self):
+        if PROVIDERS[self.provider].get("local"):
+            err = local_ensure()
+            if err:
+                self.ui.on_error(err)  # _run's finally block reports completion
+                return
         try:
             self._loop_openai()
         except openai.AuthenticationError:

@@ -453,3 +453,14 @@ apps:
      description: "Cloud gaming - plays big Windows games (including some anti-cheat ones) on any PC. Needs Chrome."}
   - {id: xbox-cloud, name: Xbox Cloud Gaming, category: Games, icon: applications-games, source: webapp,
      url: "https://www.xbox.com/play", aliases: [game pass, cloud gaming], description: "Game Pass games streamed from the cloud. Needs Chrome or Edge."}
+
+  # ------------------------------------------------------------------ Stoa AI
+  - id: stoa-ai-local
+    name: Stoa AI Local
+    category: Utilities
+    icon: stoa
+    source: ai-local
+    aliases: [ai, offline ai, private ai, local ai, chatgpt offline, llm]
+    description: >-
+      Stoa AI running entirely on this PC - private, no account or key, works offline. Downloads the best
+      open model for your memory and graphics card (1.3-5 GB).

@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""Stoa AI Local: Stoa AI running entirely on this PC - no account, no key, works offline.
+
+  stoa-ai-local status              what's installed and running (JSON)
+  stoa-ai-local recommend           the best model for this PC's memory and graphics card
+  stoa-ai-local install [MODEL]     download a model (default: the recommended one) and use it
+  stoa-ai-local use MODEL           switch to an installed model
+  stoa-ai-local remove MODEL        delete a downloaded model
+  stoa-ai-local ensure              start the local AI engine if needed and wait until it's ready
+  stoa-ai-local stop                stop the engine (frees its memory)
+  stoa-ai-local serve               run the engine in the foreground (used by the user service)
+
+The engine is llama.cpp's server (OpenAI-compatible API on 127.0.0.1 only). It uses the graphics card
+through Vulkan when it can, falls back to the CPU if that fails, and stops itself after 20 idle minutes
+so older PCs get their memory back.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HOME = os.path.expanduser("~")
+CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), "stoa", "ai-local.json")
+MODELS_DIR = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local/share")), "stoa", "models")
+CATALOG = os.environ.get("STOA_AI_MODELS", "/usr/share/stoa/ai-models.json")
+SERVER = os.environ.get("STOA_LLAMA_SERVER", "/usr/lib/stoa/llama/llama-server")
+HF = os.environ.get("STOA_HF_URL", "https://huggingface.co").rstrip("/")
+HOST, PORT = "127.0.0.1", int(os.environ.get("STOA_AI_LOCAL_PORT", "8089"))
+BASE_URL = f"http://{HOST}:{PORT}"
+IDLE_STOP_S = int(os.environ.get("STOA_AI_LOCAL_IDLE", str(20 * 60)))
+
+
+# ------------------------------------------------------------------ config and catalog
+
+def catalog():
+    with open(CATALOG) as f:
+        return {m["id"]: m for m in json.load(f)["models"]}
+
+
+def load_cfg():
+    try:
+        with open(CONFIG) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_cfg(**kw):
+    cfg = load_cfg()
+    cfg.update(kw)
+    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+    with open(CONFIG, "w") as f:
+        json.dump(cfg, f, indent=1)
+
+
+def installed():
+    """{model id: path} for models whose file is complete."""
+    cfg = load_cfg()
+    out = {}
+    for mid, info in cfg.get("installed", {}).items():
+        if os.path.exists(info.get("path", "")):
+            out[mid] = info["path"]
+    return out
+
+
+# ------------------------------------------------------------------ hardware
+
+def ram_gb():
+    with open("/proc/meminfo") as f:
+        kb = int(re.search(r"MemTotal:\s+(\d+)", f.read()).group(1))
+    return kb / 1024 / 1024
+
+
+def gpus():
+    """[(vendor, name, vram_gb or None)] for display adapters (Vulkan uses any of them)."""
+    out = []
+    names = {"0x10de": "NVIDIA", "0x1002": "AMD", "0x8086": "Intel"}
+    for card in sorted(os.listdir("/sys/class/drm")) if os.path.isdir("/sys/class/drm") else []:
+        if not re.match(r"card\d+$", card):
+            continue
+        dev = f"/sys/class/drm/{card}/device"
+        try:
+            vendor = open(f"{dev}/vendor").read().strip()
+        except OSError:
+            continue
+        vram = None
+        try:
+            vram = int(open(f"{dev}/mem_info_vram_total").read()) / 1024 ** 3  # amdgpu
+        except (OSError, ValueError):
+            pass
+        if vendor == "0x10de" and shutil.which("nvidia-smi"):
+            r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                               capture_output=True, text=True)
+            if r.returncode == 0 and r.stdout.strip():
+                vram = int(r.stdout.split()[0]) / 1024
+        if vendor in names:
+            out.append((names[vendor], card, vram))
+    return out
+
+
+def recommend():
+    ram = ram_gb()
+    dedicated = max([v for _, _, v in gpus() if v] or [0])
+    if dedicated >= 7.5 or ram >= 14:
+        mid = "large"
+    elif ram >= 6:
+        mid = "balanced"
+    else:
+        mid = "small"
+    return mid, ram, dedicated
+
+
+# ------------------------------------------------------------------ download
+
+def http_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Stoa-AI-Local"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())
+
+
+def resolve(model):
+    """(repo, filename, size, sha256) for the model's GGUF file, checking the listed repos then a search."""
+    quant = model["quant"].lower()
+    repos = list(model.get("repos", []))
+    try:
+        q = urllib.parse.urlencode({"search": model["search"], "sort": "downloads", "direction": "-1", "limit": "8"})
+        repos += [m["id"] for m in http_json(f"{HF}/api/models?{q}") if m["id"] not in repos]
+    except (OSError, ValueError, KeyError):
+        pass
+    for repo in repos:
+        try:
+            info = http_json(f"{HF}/api/models/{repo}?blobs=true")
+        except (OSError, ValueError):
+            continue
+        for s in info.get("siblings", []):
+            name = s.get("rfilename", "")
+            low = name.lower()
+            if low.endswith(".gguf") and quant in low and "mmproj" not in low and "/" not in name:
+                lfs = s.get("lfs") or {}
+                return repo, name, lfs.get("size") or s.get("size"), lfs.get("sha256")
+    raise SystemExit(f"Couldn't find {model['base']} ({model['quant']}) on Hugging Face. Check the internet "
+                     "connection and try again.")
+
+
+def download(model, progress=False):
+    repo, name, size, sha = resolve(model)
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    dest = os.path.join(MODELS_DIR, name)
+    part = dest + ".part"
+    if not os.path.exists(dest):
+        url = f"{HF}/{repo}/resolve/main/{urllib.parse.quote(name)}"
+        have = os.path.getsize(part) if os.path.exists(part) else 0
+        free = shutil.disk_usage(MODELS_DIR).free
+        if size and size - have > free - 512 * 1024 ** 2:
+            raise SystemExit(f"Not enough disk space: {model['base']} needs {size / 1024 ** 3:.1f} GB.")
+        headers = {"User-Agent": "Stoa-AI-Local"}
+        if have:
+            headers["Range"] = f"bytes={have}-"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as r, open(part, "ab" if have and r.status == 206 else "wb") as f:
+            done = have if r.status == 206 else 0
+            total = size or (done + int(r.headers.get("Content-Length", 0)))
+            last = 0
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                f.write(chunk)
+                done += len(chunk)
+                if progress and time.time() - last > 0.5:
+                    print(f"progress {done} {total}", flush=True)
+                    last = time.time()
+        if progress:
+            print("verifying", flush=True)
+        if sha:
+            h = hashlib.sha256()
+            with open(part, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 22), b""):
+                    h.update(chunk)
+            if h.hexdigest() != sha:
+                os.remove(part)
+                raise SystemExit("The download was damaged (checksum mismatch). Please try again.")
+        os.replace(part, dest)
+    cfg = load_cfg()
+    inst = cfg.get("installed", {})
+    inst[model["id"]] = {"path": dest, "repo": repo, "file": name, "base": model["base"]}
+    save_cfg(installed=inst, model=model["id"])
+    return dest
+
+
+# ------------------------------------------------------------------ engine
+
+def healthy(timeout=2):
+    try:
+        with urllib.request.urlopen(f"{BASE_URL}/health", timeout=timeout) as r:
+            return r.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+def server_args(path, model, gpu):
+    args = [SERVER, "-m", path, "--host", HOST, "--port", str(PORT), "--alias", "stoa-local",
+            "--jinja", "-c", str(model.get("context", 8192)), "--metrics",
+            "--cache-reuse", "256", "--no-webui"]
+    args += ["--reasoning-budget", "0"]  # answer directly (no hidden "thinking" step): faster on small PCs
+    args += ["-ngl", "999"] if gpu else ["-ngl", "0", "--device", "none"]
+    return args
+
+
+def metric_total():
+    try:
+        with urllib.request.urlopen(f"{BASE_URL}/metrics", timeout=5) as r:
+            text = r.read().decode()
+        return sum(float(v) for k, v in re.findall(r"^llamacpp:(n_decode_total|prompt_tokens_total)\s+(\S+)",
+                                                   text, re.M))
+    except (OSError, ValueError):
+        return None
+
+
+def serve():
+    cfg = load_cfg()
+    mid = cfg.get("model")
+    inst = installed()
+    if mid not in inst:
+        raise SystemExit("No local model installed yet: run 'stoa-ai-local install'.")
+    model = catalog().get(mid, {"id": mid})
+    tries = [cfg.get("gpu", True), False] if cfg.get("gpu", True) else [False]
+    for gpu in tries:
+        proc = subprocess.Popen(server_args(inst[mid], model, gpu))
+        for _ in range(600):  # loading a model can take a while on a slow disk
+            if proc.poll() is not None or healthy(1):
+                break
+            time.sleep(0.5)
+        if proc.poll() is None and healthy(1):
+            if not gpu and cfg.get("gpu", True):
+                save_cfg(gpu=False)  # the graphics driver failed; use the CPU from now on
+            break
+        proc.terminate()
+        proc.wait()
+    else:
+        raise SystemExit("The local AI engine couldn't start.")
+
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    last_total, last_change = metric_total(), time.time()
+    while not stop.is_set() and proc.poll() is None:
+        stop.wait(30)
+        total = metric_total()
+        if total != last_total:
+            last_total, last_change = total, time.time()
+        elif time.time() - last_change > IDLE_STOP_S:
+            break
+    proc.terminate()
+    try:
+        proc.wait(10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def ensure(timeout=240):
+    if healthy():
+        return True
+    if not installed():
+        raise SystemExit("No local model installed yet: run 'stoa-ai-local install'.")
+    started = subprocess.run(["systemctl", "--user", "start", "stoa-ai-local.service"],
+                             capture_output=True).returncode == 0 if shutil.which("systemctl") else False
+    if not started:  # no user systemd (e.g. testing): run the engine detached
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "serve"], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if healthy():
+            return True
+        time.sleep(0.5)
+    raise SystemExit("The local AI engine didn't start in time.")
+
+
+def status():
+    mid, ram, vram = recommend()
+    cfg = load_cfg()
+    return {
+        "engine": os.path.exists(SERVER),
+        "running": healthy(),
+        "model": cfg.get("model"),
+        "installed": {k: os.path.getsize(v) for k, v in installed().items()},
+        "recommended": mid,
+        "ram_gb": round(ram, 1),
+        "gpus": [{"vendor": v, "vram_gb": round(m, 1) if m else None} for v, _, m in gpus()],
+        "gpu_enabled": cfg.get("gpu", True),
+        "base_url": BASE_URL + "/v1",
+        "models": [{k: m.get(k) for k in ("id", "name", "base", "approx_gb", "about", "license")}
+                   for m in catalog().values()],
+    }
+
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else "status"
+    if cmd in ("-h", "--help", "help"):
+        print(__doc__)
+    elif cmd == "status":
+        print(json.dumps(status(), indent=1))
+    elif cmd == "recommend":
+        mid, ram, vram = recommend()
+        m = catalog()[mid]
+        print(f"{mid}: {m['name']} ({m['base']}, about {m['approx_gb']} GB) - this PC has {ram:.1f} GB RAM"
+              + (f" and a {vram:.0f} GB graphics card" if vram else ""))
+    elif cmd == "install":
+        mid = a[1] if len(a) > 1 and not a[1].startswith("-") else recommend()[0]
+        cat = catalog()
+        if mid not in cat:
+            raise SystemExit(f"Unknown model '{mid}'. Choose from: {', '.join(cat)}")
+        path = download(cat[mid], progress="--progress" in a)
+        print(f"ready {mid} {path}", flush=True)
+    elif cmd == "use" and len(a) > 1:
+        if a[1] not in installed():
+            raise SystemExit(f"'{a[1]}' isn't downloaded. Run 'stoa-ai-local install {a[1]}'.")
+        save_cfg(model=a[1])
+        subprocess.run(["systemctl", "--user", "stop", "stoa-ai-local.service"], capture_output=True)
+        print(f"Using {a[1]}.")
+    elif cmd == "remove" and len(a) > 1:
+        cfg = load_cfg()
+        info = cfg.get("installed", {}).pop(a[1], None)
+        if not info:
+            raise SystemExit(f"'{a[1]}' isn't downloaded.")
+        if os.path.exists(info["path"]):
+            os.remove(info["path"])
+        if cfg.get("model") == a[1]:
+            cfg["model"] = next(iter(cfg["installed"]), None)
+        save_cfg(**cfg)
+        print(f"Removed {a[1]}.")
+    elif cmd == "ensure":
+        ensure()
+        print("ready")
+    elif cmd == "stop":
+        subprocess.run(["systemctl", "--user", "stop", "stoa-ai-local.service"], capture_output=True)
+        subprocess.run(["pkill", "-u", str(os.getuid()), "-f", f"{SERVER} .*--port {PORT}"], capture_output=True)
+        print("stopped")
+    elif cmd == "serve":
+        serve()
+    else:
+        raise SystemExit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,7 @@
 #   sudo ./build-iso.sh iso        # only pack squashfs + ISO
 #
 # Requires (Ubuntu 24.04 host): mmdebstrap squashfs-tools xorriso grub-pc-bin
-# grub-efi-amd64-bin mtools
+# grub-efi-amd64-bin mtools, plus cmake g++ glslc libvulkan-dev spirv-headers for the Stoa AI Local engine
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -113,6 +113,7 @@ stage_customize() {
   cp -a "$HERE/overlay/." "$ROOT/"
   find "$ROOT/usr/lib/stoa" -name "__pycache__" -prune -exec rm -rf {} +
   build_shell_helper
+  "$HERE/build-llama.sh" "$ROOT/usr/lib/stoa/llama"   # Stoa AI Local engine
   vendor_python
   stage_kernel
   cp "$HERE/VERSION" "$ROOT/usr/share/stoa/VERSION"

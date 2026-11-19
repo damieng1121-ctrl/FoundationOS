@@ -3,6 +3,7 @@
 import html
 import os
 import re
+import subprocess
 import sys
 import threading
 
@@ -167,6 +168,20 @@ class Panel(Gtk.Window):
         box.pack_start(mrow, False, False, 0)
         self.model_row = mrow
 
+        # Stoa AI Local: model size picker + download progress
+        self.local_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.local_info = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "fs-muted")
+        self.local_box.pack_start(self.local_info, False, False, 0)
+        self.local_combo = Gtk.ComboBoxText()
+        self.local_combo.set_size_request(10, -1)
+        for cell in self.local_combo.get_cells():
+            cell.set_property("ellipsize", Pango.EllipsizeMode.END)
+        self.local_combo.connect("changed", lambda *_: self.local_combo.get_active_id() and self._local_label())
+        self.local_box.pack_start(self.local_combo, False, False, 0)
+        self.local_progress = Gtk.ProgressBar(show_text=True)
+        self.local_box.pack_start(self.local_progress, False, False, 0)
+        box.pack_start(self.local_box, False, False, 0)
+
         self.privacy = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "fs-muted")
         box.pack_start(self.privacy, False, False, 0)
         row = Gtk.Box(spacing=8)
@@ -181,7 +196,8 @@ class Panel(Gtk.Window):
         box.pack_start(row, False, False, 0)
         self.setup_err = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "ai-error")
         box.pack_start(self.setup_err, False, False, 0)
-        GLib.idle_add(lambda: (self.provider_combo.set_active_id("claude"), False)[1])
+        default = "local" if os.path.exists("/usr/lib/stoa/llama/llama-server") else "claude"
+        GLib.idle_add(lambda: (self.provider_combo.set_active_id(default), False)[1])
         return box
 
     def _provider_changed(self, *_):
@@ -201,6 +217,9 @@ class Panel(Gtk.Window):
         self.setup_err.set_text("")
         self.save_btn.set_sensitive(True)
         self.signin_creds = None
+        self.local_box.set_visible(bool(p.get("local")))
+        if p.get("local"):
+            self._local_setup()
         if p.get("signin"):
             import signin
             from agent import load_config
@@ -219,8 +238,85 @@ class Panel(Gtk.Window):
                 self.setup_err.set_text(why + " See the Stoa README to enable it.")
             elif self.signin_creds:
                 self.setup_err.set_text(f"Signed in to {site}.")
-        else:
+        elif not p.get("local"):
             self.save_btn.set_label("Turn on Stoa AI")
+
+    def _local_setup(self):
+        from agent import local_status
+        self.local_progress.hide()
+        st = local_status()
+        self.model_row.hide()
+        if not st.get("engine"):
+            self.local_info.set_text("The on-device AI engine isn't installed on this PC. Run the latest Stoa update.")
+            self.local_combo.hide()
+            self.save_btn.set_sensitive(False)
+            return
+        models = st.get("models", [])
+        self.local_combo.remove_all()
+        rec = st.get("recommended")
+        for m in models:
+            tag = " ★" if m["id"] == rec else ""
+            done = " · downloaded" if m["id"] in st.get("installed", {}) else f" · {m['approx_gb']} GB"
+            self.local_combo.append(m["id"], f"{m['name'].split(' - ')[0]}{tag} - {m['base']}{done}")
+        self.local_combo.set_active_id(st.get("model") or rec)
+        self.local_combo.show()
+        gpu = ", ".join(f"{g['vendor']}" + (f" {g['vram_gb']:.0f} GB" if g.get("vram_gb") else "")
+                        for g in st.get("gpus", []))
+        self.local_info.set_text(f"This PC: {st.get('ram_gb', '?')} GB memory" + (f", graphics: {gpu}" if gpu else "")
+                                 + ". ★ = best for this PC. Bigger is smarter but slower and needs more memory.")
+        self._local_label()
+
+    def _local_label(self):
+        from agent import local_status
+        mid = self.local_combo.get_active_id()
+        have = mid in local_status().get("installed", {})
+        self.save_btn.set_label("Turn on Stoa AI" if have else "Download and turn on")
+
+    def _local_install(self):
+        from agent import save_config
+        mid = self.local_combo.get_active_id()
+        self.save_btn.set_sensitive(False)
+        self.provider_combo.set_sensitive(False)
+        self.local_progress.show()
+        self.local_progress.set_fraction(0)
+        self.local_progress.set_text("Finding the model…")
+        self.setup_err.set_text("")
+
+        def work():
+            proc = subprocess.Popen(["stoa-ai-local", "install", mid, "--progress"], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True)
+            for line in proc.stdout:
+                parts = line.split()
+                if parts[:1] == ["progress"] and len(parts) == 3 and int(parts[2]) > 0:
+                    done, total = int(parts[1]), int(parts[2])
+                    GLib.idle_add(self.local_progress.set_fraction, done / total)
+                    GLib.idle_add(self.local_progress.set_text,
+                                  f"Downloading… {done / 1024 ** 3:.2f} of {total / 1024 ** 3:.2f} GB")
+                elif parts[:1] == ["verifying"]:
+                    GLib.idle_add(self.local_progress.set_text, "Checking the download…")
+            err = proc.stderr.read().strip()
+            rc = proc.wait()
+            if rc == 0:
+                GLib.idle_add(self.local_progress.set_text, "Starting the engine…")
+                r = subprocess.run(["stoa-ai-local", "ensure"], capture_output=True, text=True)
+                err = r.stderr.strip() if r.returncode else ""
+                rc = r.returncode
+            GLib.idle_add(done_cb, rc, err)
+
+        def done_cb(rc, err):
+            self.save_btn.set_sensitive(True)
+            self.provider_combo.set_sensitive(True)
+            if rc != 0:
+                self.local_progress.hide()
+                self.setup_err.set_text(err or "That didn't work. Check the internet connection and try again.")
+                return
+            save_config("local", "", "stoa-local")
+            self.agent.reset()
+            for c in self.list.get_children():
+                c.destroy()
+            self._enter()
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _open_key_page(self):
         from agent import PROVIDERS
@@ -320,6 +416,19 @@ class Panel(Gtk.Window):
         key = self.key_entry.get_text().strip()
         model = self.model_combo.get_child().get_text().strip()
         url = self.url_entry.get_text().strip()
+        if p.get("local"):
+            from agent import local_status
+            mid = self.local_combo.get_active_id()
+            if mid not in local_status().get("installed", {}) or local_status().get("model") != mid:
+                if mid in local_status().get("installed", {}):
+                    subprocess.run(["stoa-ai-local", "use", mid], capture_output=True)
+                else:
+                    return self._local_install()
+            save_config("local", "", "stoa-local")
+            self.agent.reset()
+            for ch in self.list.get_children():
+                ch.destroy()
+            return self._enter()
         if p.get("signin"):
             if not self.signin_creds:
                 return self._sign_in()

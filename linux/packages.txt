@@ -106,6 +106,9 @@ printer-driver-ptouch
 openprinting-ppds
 simple-scan
 sane-airscan
+# Stoa AI Local engine (llama.cpp): Vulkan for graphics cards, OpenMP for CPUs
+libvulkan1
+libgomp1
 # Performance: compressed swap in RAM
 systemd-zram-generator
 # Security: firewall, app confinement, antivirus, drive encryption with TPM unlock

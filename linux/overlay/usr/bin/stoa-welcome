@@ -15,7 +15,8 @@ import stoa_ui as ui  # noqa: E402
 DONE = os.path.expanduser("~/.config/stoa/welcome-done")
 STARTER = [("google-chrome", "Google Chrome"), ("microsoft-365", "Microsoft 365 (Word, Excel, PowerPoint, Outlook, Teams)"),
            ("google-drive", "Google Drive, Docs, Sheets, Slides"), ("onlyoffice", "ONLYOFFICE (offline Office files)"),
-           ("vlc", "VLC media player"), ("zoom", "Zoom"), ("steam", "Steam (games)")]
+           ("vlc", "VLC media player"), ("zoom", "Zoom"), ("steam", "Steam (games)"),
+           ("stoa-ai-local", "Stoa AI on this PC - private, works offline (1-5 GB download)")]
 
 
 def main():

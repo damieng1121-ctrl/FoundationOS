@@ -577,6 +577,16 @@ def install_target(target, assume_yes=False):
         install_catalog_windows(app)
     elif src == "bundle":
         install_target(app["download"]["url"])
+    elif src == "ai-local":
+        run(["stoa-ai-local", "install"])
+        cfg = os.path.join(HOME, ".config/stoa/assistant.json")
+        if not os.path.exists(cfg):  # make it Stoa AI's provider unless one is already chosen
+            os.makedirs(os.path.dirname(cfg), exist_ok=True)
+            with open(cfg, "w") as f:
+                json.dump({"provider": "local", "api_key": "", "model": "stoa-local", "base_url": ""}, f)
+            os.chmod(cfg, 0o600)
+        record(app["id"], source="ai-local", name=app["name"])
+        ok("Stoa AI Local is ready - open Stoa AI (the ✦ button) to use it.")
     elif src == "setup":
         run(["stoa-game-setup", app["setup"]])
         record(app["id"], source="setup", name=app["name"], setup=app["setup"])
@@ -627,6 +637,11 @@ def remove(name):
         print("Graphics drivers stay installed; they are part of the system.")
     elif src == "setup":
         run(["stoa-game-setup", "remove", info["setup"]], check=False)
+    elif src == "ai-local":
+        r = subprocess.run(["stoa-ai-local", "status"], capture_output=True, text=True)
+        for mid in (json.loads(r.stdout).get("installed", {}) if r.returncode == 0 else {}):
+            run(["stoa-ai-local", "remove", mid], check=False)
+        run(["stoa-ai-local", "stop"], check=False)
     elif src == "rclone":
         run(["systemctl", "--user", "disable", "--now", info["unit"]], check=False)
         os.remove(os.path.join(HOME, ".config/systemd/user", info["unit"]))

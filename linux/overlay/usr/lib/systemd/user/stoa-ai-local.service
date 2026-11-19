@@ -1,0 +1,11 @@
+[Unit]
+Description=Stoa AI Local (on-device AI engine)
+Documentation=man:stoa-ai-local(1)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/stoa-ai-local serve
+# Stops itself after 20 idle minutes; started again on demand by Stoa AI.
+Restart=no
+Nice=5
+IOSchedulingClass=idle

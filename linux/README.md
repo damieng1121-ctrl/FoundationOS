@@ -103,6 +103,7 @@ setup screen says which - except with Ollama, which runs on your own machine.
 
 | Provider | Default model | Key from |
 |---|---|---|
+| **Stoa AI Local** | best size for the PC (below) | nothing - runs on this PC, offline |
 | Claude | `claude-opus-5-5` | console.anthropic.com |
 | ChatGPT | `gpt-5` | platform.openai.com |
 | Gemini | `gemini-2.5-flash` | aistudio.google.com |
@@ -110,6 +111,31 @@ setup screen says which - except with Ollama, which runs on your own machine.
 | OpenRouter | a free model, picked after sign-in | sign in - no key |
 | Hugging Face | picked after sign-in | sign in - no key (see below) |
 | Custom | you choose | any OpenAI-compatible endpoint (base URL + key) |
+
+### Stoa AI Local - AI on this PC
+
+The default choice in the setup screen (and an option on the welcome screen and in the Store): Stoa AI
+running entirely on the computer. **No account, no key, no internet needed, nothing you type leaves the PC.**
+
+- **Engine:** llama.cpp's server, built by Stoa (`linux/build-llama.sh`, pinned release) with CPU code for
+  every x86-64 generation from 2011's Sandy Bridge to Zen 4 (picked at run time) and a **Vulkan** backend
+  that uses AMD, Intel or NVIDIA graphics when present - falling back to the CPU automatically if a graphics
+  driver misbehaves. It listens on `127.0.0.1` only, starts when Stoa AI needs it and stops after 20 idle
+  minutes so older PCs get their memory back (`stoa-ai-local.service`, a user service).
+- **Models** (`/usr/share/stoa/ai-models.json`) - open models under Apache 2.0, so Stoa may ship and rebrand
+  them. Stoa recommends a size from the PC's memory and graphics card:
+
+  | Size | Model | Download | Suits |
+  |---|---|---|---|
+  | Small | Qwen3 1.7B | ~1.3 GB | 4 GB PCs: questions, settings, files |
+  | Balanced | Qwen3 4B Instruct | ~2.5 GB | 8 GB PCs: everyday help, troubleshooting, small apps |
+  | Large | Qwen3 8B | ~5 GB | 16 GB or a graphics card: best local quality |
+
+  Downloads come from Hugging Face, resume if interrupted and are checked against Hugging Face's SHA-256.
+- **Honest limits:** local models are smaller than Claude, GPT or Gemini - great for help, settings, files
+  and troubleshooting, weaker at building big apps, and slower on old PCs without a graphics card. You can
+  switch to a cloud provider any time from ⋯ → **Change AI provider**.
+- Command line: `stoa-ai-local status | recommend | install [small|balanced|large] | use | remove | stop`.
 
 **No API key? Sign in instead.** Two services officially let an app use your account through a normal
 browser sign-in (OAuth with PKCE - Stoa never sees your password, and the key it receives stays on this
