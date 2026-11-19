@@ -6,7 +6,7 @@ VERSION="${STOA_VERSION:-0.0.0}"
 
 # --- Extra packages (kept here so the cached base rootfs can be reused)
 apt-get update
-apt-get install -y --no-install-recommends \
+apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
   unattended-upgrades dconf-cli qtwayland5 \
   qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
   qml-module-qtquick-controls2 qml-module-qtquick-controls qml-module-qtgraphicaleffects \

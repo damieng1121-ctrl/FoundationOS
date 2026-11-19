@@ -27,7 +27,7 @@ $ uname -r
 Everything else comes from Ubuntu's generic configuration for that kernel, so hardware support matches
 Ubuntu 26.04: Wi-Fi, GPUs, VirtualBox/VMware/Hyper-V/QEMU guests, laptops, USB devices. Rust-written drivers
 are left out (they need a matching Rust toolchain at build time). The OS side adds zram swap
-(`/etc/systemd/zram-generator.conf`), matching `sysctl` settings and the Stoa boot screen (Plymouth theme
+(`/etc/systemd/zram-generator.conf.d/stoa.conf`), matching `sysctl` settings and the Stoa boot screen (Plymouth theme
 `stoa`, also used for the disk-encryption prompt).
 
 The full configuration change is [`stoa.config`](stoa.config); edit it to tune the kernel.
