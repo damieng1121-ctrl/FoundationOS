@@ -233,7 +233,8 @@ TILES = [
     ("Install updates now", "software-update-available", ["stoa-updates"]),
     ("Files", "system-file-manager", ["thunar"]),
     ("Terminal", "utilities-terminal", ["foot"]),
-    ("System monitor", "utilities-system-monitor", ["foot", "-e", "top"]),
+    ("Task Manager", "utilities-system-monitor", ["stoa-taskmgr"]),
+    ("About this PC", "computer", ["stoa-taskmgr", "system"]),
 ]
 
 
@@ -255,6 +256,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("personalise", "personalize"):
         pick_wallpaper(None)
         return
+    if len(sys.argv) > 1 and sys.argv[1] in ("about", "system"):
+        os.execvp("stoa-taskmgr", ["stoa-taskmgr", "system"])
     if len(sys.argv) > 1 and sys.argv[1] == "accounts":
         os.execvp("stoa-users", ["stoa-users"])
     win = Gtk.Window(title="Stoa Settings")

@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+Comment=See what's running, end frozen apps, check performance and what's inside this PC
+Exec=stoa-taskmgr
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Keywords=task;manager;processes;performance;resource;monitor;cpu;memory;ram;gpu;disk;startup;hardware;system information;specs;about;
+Actions=performance;system;
+
+[Desktop Action performance]
+Name=Performance
+Exec=stoa-taskmgr performance
+
+[Desktop Action system]
+Name=About this PC
+Exec=stoa-taskmgr system

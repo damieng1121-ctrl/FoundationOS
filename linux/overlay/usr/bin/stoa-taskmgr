@@ -1,0 +1,1689 @@
+#!/usr/bin/env python3
+"""Stoa Task Manager: what's running, how hard the PC is working, start-up apps, and everything in this PC.
+
+  stoa-taskmgr                         open on Processes (Ctrl+Shift+Esc)
+  stoa-taskmgr performance|startup|system
+  stoa-taskmgr --report                print the hardware report (for Stoa AI and for support)
+  stoa-taskmgr --autostart             start the apps set to start when you sign in (run by the session)
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from collections import deque
+
+CLK = os.sysconf("SC_CLK_TCK")
+PAGE = os.sysconf("SC_PAGE_SIZE")
+NCPU = os.cpu_count() or 1
+ME = os.getuid()
+TICK = 2          # seconds between updates
+HISTORY = 60      # points in each graph (2 minutes)
+AUTOSTART = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "autostart")
+DESKTOPS = set((os.environ.get("XDG_CURRENT_DESKTOP") or "Stoa:wlroots").split(":")) | {"Stoa", "wlroots"}
+
+# Processes that start apps: a group of processes stops climbing at these.
+LAUNCHERS = {"systemd", "labwc", "lightdm", "stoa-session", "stoa-shell", "init", "sh", "dash", "bash",
+             "flatpak-session-helper", "xdg-desktop-portal", "dbus-daemon", "dbus-broker"}
+SHELLS = {"sh", "dash", "bash", "zsh", "fish", "env", "bwrap", "flatpak"}
+FRIENDLY = {
+    "stoa-shell": "Stoa Shell (taskbar, menu and desktop)", "labwc": "Stoa window manager",
+    "stoa-session": "Stoa session", "mako": "Notifications", "lxpolkit": "Administrator password prompts",
+    "pipewire": "Sound (PipeWire)", "pipewire-pulse": "Sound for older apps", "wireplumber": "Sound devices",
+    "Xwayland": "Support for older (X11) apps", "stoa-protect": "Stoa Protect download scanner",
+    "stoa-display-follow": "Screen size helper", "llama-server.bin": "Stoa AI Local engine",
+    "llama-server": "Stoa AI Local engine", "openrazer-daemo": "Razer devices", "openrazer-daemon": "Razer devices",
+    "dbus-daemon": "System messages (D-Bus)", "dbus-broker": "System messages (D-Bus)",
+    "systemd": "Your session (systemd)", "gvfsd": "Drives and network folders", "xdg-desktop-portal": "App permissions",
+    "xdg-document-portal": "App file access", "xdg-permission-store": "App permissions",
+    "at-spi-bus-launcher": "Accessibility", "at-spi2-registryd": "Accessibility", "gnome-keyring-daemon": "Passwords",
+    "Xorg": "Display server (X11)", "lightdm": "Sign-in screen", "NetworkManager": "Networking",
+    "wpa_supplicant": "Wi-Fi", "bluetoothd": "Bluetooth", "cupsd": "Printing", "clamd": "Stoa Protect antivirus",
+    "freshclam": "Virus signature updates", "polkitd": "Permissions", "systemd-journal": "System log",
+    "systemd-journald": "System log", "systemd-logind": "Sign-in sessions", "systemd-udevd": "Device manager",
+    "systemd-resolved": "Name lookups (DNS)", "systemd-timesyncd": "Clock sync", "avahi-daemon": "Local network discovery",
+    "cups-browsed": "Network printer discovery", "accounts-daemon": "Accounts", "upowerd": "Power", "udisksd": "Drives",
+    "rtkit-daemon": "Real-time scheduling for sound", "snapd": "Snap packages", "fwupd": "Firmware updates",
+    "gamemoded": "GameMode", "colord": "Colour profiles", "ModemManager": "Mobile broadband",
+}
+ALIASES = {"chrome": "google-chrome-stable", "steamwebhelper": "steam", "soffice.bin": "libreoffice",
+           "thunar": "thunar", "Discord": "discord", "code": "code"}
+JUNK = {"", "to be filled by o.e.m.", "default string", "system product name", "system manufacturer", "o.e.m.",
+        "not applicable", "none", "system version", "x.x", "0123456789", "type1productconfigid", "not specified",
+        "default", "unknown", "base board product name"}
+COLOURS = {"cpu": (0.31, 0.55, 1.0), "mem": (0.63, 0.44, 1.0), "disk": (0.25, 0.70, 0.50),
+           "net": (0.94, 0.63, 0.19), "gpu": (0.88, 0.34, 0.48)}
+
+
+# ------------------------------------------------------------------ reading the system
+
+def rd(path, default=""):
+    try:
+        with open(path, errors="replace") as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def run(*cmd, timeout=6):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def human(n, rate=False):
+    n = float(n)
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024 or u == "TB":
+            s = f"{n:.0f}" if u == "B" or n >= 100 else f"{n:.1f}"
+            return f"{s} {u}" + ("/s" if rate else "")
+        n /= 1024
+
+
+def bits(n):
+    """Bytes per second as network speed (Kbps, Mbps...), like other systems show it."""
+    b = n * 8
+    for u in ("bps", "Kbps", "Mbps", "Gbps"):
+        if b < 1000 or u == "Gbps":
+            return f"{b:.0f} {u}" if b >= 100 or u == "bps" else f"{b:.1f} {u}"
+        b /= 1000
+
+
+def duration(sec):
+    sec = int(sec)
+    d, h, m, s = sec // 86400, sec // 3600 % 24, sec // 60 % 60, sec % 60
+    return f"{d}:{h:02d}:{m:02d}:{s:02d}"
+
+
+def cpu_sample():
+    """(busy, total) jiffies for the whole CPU, then each logical processor."""
+    out = []
+    for line in rd("/proc/stat").splitlines():
+        if not line.startswith("cpu"):
+            break
+        v = [int(x) for x in line.split()[1:9]]
+        idle = v[3] + v[4]
+        out.append((sum(v) - idle, sum(v)))
+    return out
+
+
+def meminfo():
+    m = {}
+    for line in rd("/proc/meminfo").splitlines():
+        k, _, v = line.partition(":")
+        parts = v.split()
+        if parts:
+            m[k] = int(parts[0]) * (1024 if len(parts) > 1 else 1)
+    return m
+
+
+def cpu_model():
+    for line in rd("/proc/cpuinfo").splitlines():
+        if line.startswith("model name"):
+            return re.sub(r"\s+", " ", line.split(":", 1)[1]).strip()
+    return os.uname().machine
+
+
+def cpu_flags():
+    for line in rd("/proc/cpuinfo").splitlines():
+        if line.startswith("flags"):
+            return set(line.split(":", 1)[1].split())
+    return set()
+
+
+def physical_cores():
+    cores = set()
+    for d in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology"):
+        cores.add((rd(f"{d}/physical_package_id"), rd(f"{d}/core_id")))
+    return len(cores) or NCPU
+
+
+def cpu_freqs():
+    cur = [int(x) for x in (rd(p, "0") for p in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq")) if x.isdigit()]
+    if not cur:  # no frequency driver (some VMs and old PCs): the kernel's own measurement
+        cur = [float(line.split(":")[1]) * 1000 for line in rd("/proc/cpuinfo").splitlines() if line.startswith("cpu MHz")]
+    mx = rd("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "0")
+    base = rd("/sys/devices/system/cpu/cpu0/cpufreq/base_frequency", "0")
+    return (sum(cur) / len(cur) / 1e6 if cur else 0.0), int(mx or 0) / 1e6, int(base or 0) / 1e6
+
+
+def hwmon_temp(names):
+    for d in glob.glob("/sys/class/hwmon/hwmon*"):
+        if rd(f"{d}/name") in names:
+            best = None
+            for f in sorted(glob.glob(f"{d}/temp*_input")):
+                label = rd(f.replace("_input", "_label"))
+                v = int(rd(f, "0") or 0) / 1000
+                if label in ("Tctl", "Tdie", "Package id 0") or best is None:
+                    best = v
+                    if label in ("Tdie", "Package id 0"):
+                        break
+            return best
+    return None
+
+
+def cache_size(level):
+    for d in glob.glob("/sys/devices/system/cpu/cpu0/cache/index*"):
+        if rd(f"{d}/level") == str(level) and rd(f"{d}/type") in ("Unified", "Data"):
+            m = re.match(r"(\d+)K$", rd(f"{d}/size"))
+            return (f"{int(m.group(1)) // 1024} MB" if int(m.group(1)) >= 1024 else f"{m.group(1)} KB") if m else rd(f"{d}/size")
+    return ""
+
+
+def memory_modules():
+    """Installed memory sticks, from the firmware tables (udev reads them at start-up, no password needed)."""
+    out = run("udevadm", "info", "-q", "property", "-p", "/sys/devices/virtual/dmi/id")
+    props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    slots = int(props.get("MEMORY_ARRAY_NUM_DEVICES", "0") or 0)
+    mods = []
+    for i in range(64):
+        p = f"MEMORY_DEVICE_{i}_"
+        if p + "LOCATOR" not in props and p + "SIZE" not in props:
+            if i > slots:
+                break
+            continue
+        size = int(props.get(p + "SIZE", "0") or 0)
+        if not size or props.get(p + "PRESENT") == "0":
+            continue
+        mods.append({"slot": props.get(p + "LOCATOR", f"Slot {i}"), "size": size,
+                     "type": props.get(p + "MEMORY_TECHNOLOGY", "") or props.get(p + "TYPE", ""),
+                     "speed": props.get(p + "CONFIGURED_SPEED_MTS") or props.get(p + "SPEED_MTS", ""),
+                     "maker": props.get(p + "MANUFACTURER", ""), "part": props.get(p + "PART_NUMBER", ""),
+                     "form": props.get(p + "FORM_FACTOR", "")})
+    return mods, max(slots, len(mods))
+
+
+def pci_name(slot):
+    out = run("lspci", "-vmm", "-s", slot)
+    d = dict(line.split(":\t", 1) for line in out.splitlines() if ":\t" in line)
+    vendor = re.sub(r"\b(Corporation|Inc\.|Co\., Ltd\.|Technology|Semiconductor)\b", "", d.get("Vendor", "")).strip(" ,")
+    vendor = {"Advanced Micro Devices, [AMD/ATI]": "AMD", "Advanced Micro Devices, Inc. [AMD/ATI]": "AMD",
+              "NVIDIA": "NVIDIA", "Intel": "Intel"}.get(vendor, vendor.replace("[AMD/ATI]", "").strip(" ,"))
+    dev = d.get("Device", "")
+    m = re.search(r"\[([^\]]+)\]", dev)
+    return f"{vendor} {m.group(1) if m else dev}".strip()
+
+
+def gpus():
+    out = []
+    for card in sorted(glob.glob("/sys/class/drm/card[0-9]")) + sorted(glob.glob("/sys/class/drm/card[0-9][0-9]")):
+        dev = os.path.realpath(f"{card}/device")
+        vendor = rd(f"{dev}/vendor")
+        if not vendor or "/pci" not in dev:
+            continue
+        slot = os.path.basename(dev)
+        out.append({"card": card, "dev": dev, "vendor": vendor, "slot": slot,
+                    "name": pci_name(slot) or {"0x1002": "AMD graphics", "0x10de": "NVIDIA graphics",
+                                               "0x8086": "Intel graphics"}.get(vendor, "Graphics"),
+                    "driver": os.path.basename(os.path.realpath(f"{dev}/driver")) if os.path.exists(f"{dev}/driver") else "none"})
+    return out
+
+
+def nvidia_smi():
+    out = run("nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+              "--format=csv,noheader,nounits", timeout=3)
+    rows = []
+    for line in out.splitlines():
+        try:
+            u, used, total, temp = (float(x) for x in line.split(","))
+            rows.append((u, used * 1048576, total * 1048576, temp))
+        except ValueError:
+            pass
+    return rows
+
+
+def disks():
+    out = []
+    for d in sorted(glob.glob("/sys/block/*")):
+        name = os.path.basename(d)
+        if re.match(r"(loop|ram|zram|dm-|sr|fd|md)", name) or int(rd(f"{d}/size", "0") or 0) < 2**19:  # < 256 MB: empty readers
+            continue
+        real = os.path.realpath(d)
+        kind = ("NVMe SSD" if name.startswith("nvme") else "USB drive" if "/usb" in real
+                else "HDD" if rd(f"{d}/queue/rotational") == "1" else "SSD")
+        if rd(f"{d}/removable") == "1" and "/usb" not in real:
+            kind = "Removable drive"
+        out.append({"name": name, "model": rd(f"{d}/device/model") or rd(f"{d}/device/name") or name,
+                    "size": int(rd(f"{d}/size", "0")) * 512, "kind": kind})
+    return out
+
+
+def lsblk():
+    try:
+        return json.loads(run("lsblk", "-J", "-b", "-o",
+                              "NAME,PATH,TYPE,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINT,FSUSED,FSSIZE,PARTTYPENAME") or "{}")
+    except ValueError:
+        return {}
+
+
+def diskstats():
+    out = {}
+    for line in rd("/proc/diskstats").splitlines():
+        f = line.split()
+        if len(f) > 12:
+            out[f[2]] = (int(f[5]) * 512, int(f[9]) * 512, int(f[12]))
+    return out
+
+
+def net_ifaces():
+    out = []
+    for d in sorted(glob.glob("/sys/class/net/*")):
+        name = os.path.basename(d)
+        if not os.path.exists(f"{d}/device"):
+            continue  # loopback, VPNs, containers
+        out.append({"name": name, "wifi": os.path.isdir(f"{d}/wireless") or os.path.isdir(f"{d}/phy80211"),
+                    "driver": os.path.basename(os.path.realpath(f"{d}/device/driver")),
+                    "slot": os.path.basename(os.path.realpath(f"{d}/device"))})
+    return out
+
+
+def ip_addrs(iface):
+    v4, v6 = [], []
+    for line in run("ip", "-o", "addr", "show", "dev", iface).splitlines():
+        f = line.split()
+        if "inet" in f:
+            v4.append(f[f.index("inet") + 1].split("/")[0])
+        if "inet6" in f and "link" not in f:
+            v6.append(f[f.index("inet6") + 1].split("/")[0])
+    return v4, v6
+
+
+def wifi_ssid(iface):
+    for line in run("nmcli", "-t", "-f", "GENERAL.CONNECTION", "device", "show", iface).splitlines():
+        return line.split(":", 1)[1]
+    return ""
+
+
+# ------------------------------------------------------------------ processes
+
+def scope_app(cgroup):
+    """The app a process belongs to, from its systemd scope (Flatpak apps and apps started by launchers)."""
+    name = cgroup.rsplit("/", 1)[-1]
+    if not name.startswith("app-") or not name.endswith((".scope", ".service")):
+        return None
+    name = re.sub(r"\.(scope|service)$", "", name)[4:].split("@", 1)[0]
+    name = re.sub(r"^(flatpak|glib|gnome|kde|labwc|stoa|sway)-", "", name)
+    name = re.sub(r"-[0-9a-f]{1,32}$", "", name)
+    return name.replace("\\x2d", "-") or None
+
+
+def proc_static(pid, comm):
+    try:
+        uid = os.stat(f"/proc/{pid}").st_uid
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            args = [a.decode(errors="replace") for a in f.read().split(b"\0") if a]
+    except OSError:
+        return None
+    name = comm
+    if args:
+        base = os.path.basename(args[0].split(" ")[0])
+        if base.startswith(comm) or comm.startswith(base[:15]):
+            name = base
+        if re.match(r"python[0-9.]*$", base) and len(args) > 1:
+            script = next((a for a in args[1:] if not a.startswith("-")), "")
+            if script and args[1] != "-c":
+                name = os.path.basename(script)
+    cg = rd(f"/proc/{pid}/cgroup").splitlines()
+    return {"uid": uid, "name": name, "cmd": " ".join(args) or f"[{comm}]",
+            "scope": scope_app(cg[-1].split("::", 1)[-1]) if cg else None}
+
+
+class Scanner:
+    """Reads every process from /proc and works out CPU, memory and disk use since the last look."""
+
+    def __init__(self):
+        self.prev = {}
+        self.static = {}
+        self.t = None
+
+    def scan(self):
+        now = time.monotonic()
+        dt = now - self.t if self.t else None
+        self.t = now
+        procs = {}
+        for d in os.listdir("/proc"):
+            if not d.isdigit():
+                continue
+            pid = int(d)
+            s = rd(f"/proc/{pid}/stat")
+            if not s:
+                continue
+            comm = s[s.find("(") + 1:s.rfind(")")]
+            f = s[s.rfind(")") + 2:].split()
+            ppid, ticks, threads, start = int(f[1]), int(f[11]) + int(f[12]), int(f[17]), int(f[19])
+            if pid == 2 or ppid == 2:
+                continue  # kernel threads
+            info = self.static.get((pid, start))
+            if info is None:
+                info = proc_static(pid, comm)
+                if info is None:
+                    continue
+                self.static[(pid, start)] = info
+            statm = rd(f"/proc/{pid}/statm").split()
+            mem = (int(statm[1]) - int(statm[2])) * PAGE if len(statm) > 2 else 0
+            io = 0
+            for line in rd(f"/proc/{pid}/io").splitlines():  # only readable for your own processes
+                if line.startswith(("read_bytes", "write_bytes")):
+                    io += int(line.split()[1])
+            cpu = disk = 0.0
+            p = self.prev.get(pid)
+            if p and p[2] == start and dt:
+                cpu = max(0.0, (ticks - p[0]) / CLK / dt / NCPU * 100)
+                disk = max(0.0, (io - p[1]) / dt)
+            procs[pid] = dict(info, pid=pid, ppid=ppid, cpu=cpu, mem=max(mem, 0), disk=disk, threads=threads,
+                              state=f[0])
+            self.prev[pid] = (ticks, io, start)
+        self.prev = {k: v for k, v in self.prev.items() if k in procs}
+        self.static = {k: v for k, v in self.static.items() if k[0] in procs and self.prev[k[0]][2] == k[1]}
+        return procs
+
+
+def app_index():
+    from gi.repository import Gio
+    by_id, by_exe = {}, {}
+    def rank(a):  # the app's main entry first, not its "settings" or "new window" extras
+        extra = [t for t in (a.get_commandline() or "").split()[1:] if not t.startswith("%")]
+        return (a.get_nodisplay(), any(t.startswith("-") for t in extra))
+    for a in sorted(Gio.AppInfo.get_all(), key=rank):
+        aid = (a.get_id() or "")[:-8]
+        by_id.setdefault(aid, a)
+        toks = (a.get_commandline() or "").split()
+        while toks and (toks[0] == "env" or "=" in toks[0]):
+            toks.pop(0)
+        if toks and os.path.basename(toks[0]) == "flatpak":
+            continue  # Flatpak apps are matched by their scope
+        if toks and re.match(r"python[0-9.]*$", os.path.basename(toks[0])) and len(toks) > 1:
+            toks.pop(0)
+        if toks:
+            by_exe.setdefault(os.path.basename(toks[0]), a)
+    return by_id, by_exe
+
+
+def find_app(index, scope=None, name=None):
+    by_id, by_exe = index
+    if scope:
+        for k in (scope, scope.lower()):
+            if k in by_id:
+                return by_id[k]
+        for k, a in by_id.items():
+            if k.lower().endswith("." + scope.lower()) or k.lower() == scope.lower():
+                return a
+    if name:
+        for k in (name, ALIASES.get(name, ""), name.lower(), re.sub(r"(\.bin|-bin|\.real|-wrapped)$", "", name)):
+            if k and k in by_exe:
+                return by_exe[k]
+            if k and k in by_id:
+                return by_id[k]
+    return None
+
+
+def build_groups(procs, index, show_all):
+    """Group processes the way people think of them: an app and everything it started."""
+    groups = {}
+    for p in procs.values():
+        if p["uid"] != ME and not show_all:
+            continue
+        if p["scope"]:
+            key = "scope:" + p["scope"]
+        else:
+            top = p
+            for _ in range(64):
+                par = procs.get(top["ppid"])
+                if (not par or par["pid"] == 1 or par["uid"] != top["uid"] or par["scope"]
+                        or par["name"] in LAUNCHERS):
+                    break
+                top = par
+            key = f"proc:{top['pid']}"
+        groups.setdefault(key, []).append(p)
+    out = {}
+    for key, ps in groups.items():
+        ps.sort(key=lambda q: q["pid"])
+        top = procs[int(key[5:])] if key.startswith("proc:") else max(ps, key=lambda q: q["mem"])
+        named = top
+        if top["name"] in SHELLS and len(ps) > 1:
+            named = max((q for q in ps if q is not top), key=lambda q: q["mem"])
+        app = find_app(index, scope=key[6:] if key.startswith("scope:") else None, name=named["name"])
+        kind = "system" if top["uid"] != ME else "app" if app and not app.get_nodisplay() else "background"
+        label = app.get_name() if app else FRIENDLY.get(named["name"]) or next(
+            (v for k, v in FRIENDLY.items() if named["name"].startswith(k)), named["name"])
+        out[key] = {"label": label, "app": app, "kind": kind, "procs": ps, "cpu": sum(q["cpu"] for q in ps),
+                    "mem": sum(q["mem"] for q in ps), "disk": sum(q["disk"] for q in ps),
+                    "tip": f"{named['cmd'][:300]}\n{len(ps)} process{'es' if len(ps) > 1 else ''}"}
+    return out
+
+
+# ------------------------------------------------------------------ hardware report
+
+def dmi(key):
+    v = rd(f"/sys/class/dmi/id/{key}")
+    return "" if v.lower() in JUNK else v
+
+
+CHASSIS = {"3": "Desktop", "4": "Desktop", "5": "Desktop", "6": "Desktop", "7": "Tower", "8": "Laptop",
+           "9": "Laptop", "10": "Laptop", "13": "All-in-one", "14": "Laptop", "30": "Tablet",
+           "31": "Convertible laptop", "32": "Detachable laptop", "35": "Mini PC", "36": "Stick PC"}
+
+
+def secure_boot():
+    for f in glob.glob("/sys/firmware/efi/efivars/SecureBoot-*"):
+        try:
+            with open(f, "rb") as fh:
+                return "On" if fh.read()[-1:] == b"\x01" else "Off"
+        except OSError:
+            return "Unknown"
+    return "Not available (legacy BIOS start-up)" if not os.path.isdir("/sys/firmware/efi") else "Off"
+
+
+def displays():
+    out, cur = [], None
+    for line in run("wlr-randr").splitlines():
+        if line and not line.startswith(" "):
+            m = re.match(r'(\S+) "(.*)"', line)
+            cur = {"name": m.group(1) if m else line.split()[0], "desc": m.group(2) if m else "", "mode": "", "on": True}
+            out.append(cur)
+        elif cur is not None:
+            s = line.strip()
+            if s.startswith("Enabled:"):
+                cur["on"] = s.endswith("yes")
+            elif "current" in s and " px" in s:
+                m = re.match(r"(\d+x\d+) px, ([\d.]+) Hz", s)
+                if m:
+                    cur["mode"] = f"{m.group(1)} at {float(m.group(2)):.0f} Hz"
+            elif s.startswith("Scale:"):
+                cur["scale"] = s.split(":", 1)[1].strip()
+    return [d for d in out if d["on"]]
+
+
+def vulkan_devices():
+    out, cur = [], {}
+    for line in run("vulkaninfo", "--summary", timeout=8).splitlines():
+        s = line.strip()
+        if s.startswith("GPU") and s.endswith(":"):
+            cur = {}
+            out.append(cur)
+        elif "=" in s and cur is not None:
+            k, v = (x.strip() for x in s.split("=", 1))
+            cur[k] = v
+    return [d for d in out if d.get("deviceName")]
+
+
+def usb_devices():
+    out = []
+    for d in sorted(glob.glob("/sys/bus/usb/devices/*")):
+        if ":" in os.path.basename(d) or os.path.basename(d).startswith("usb"):
+            continue
+        prod, maker = rd(f"{d}/product"), rd(f"{d}/manufacturer")
+        vid, pid = rd(f"{d}/idVendor"), rd(f"{d}/idProduct")
+        if not vid:
+            continue
+        speed = rd(f"{d}/speed")
+        name = " ".join(x for x in (maker if maker and maker.lower() not in (prod or "").lower() else "", prod) if x)
+        if vid == "1532" and "razer" not in name.lower():
+            name = f"Razer {name}".strip()
+        out.append((name or f"USB device {vid}:{pid}", f"{vid}:{pid}" + (f", {int(speed) // 1000 or speed} Gbps"
+                    if speed.isdigit() and int(speed) >= 5000 else f", {speed} Mbps" if speed else "")))
+    return out
+
+
+def input_devices():
+    kinds, block = [], {}
+    for line in rd("/proc/bus/input/devices").splitlines() + [""]:
+        if not line:
+            if block.get("N"):
+                h = block.get("H", "")
+                kind = "Keyboard" if "kbd" in h and "leds" in h else "Mouse / touchpad" if "mouse" in h else (
+                    "Game controller" if "js" in h else "")
+                if kind:
+                    kinds.append((block["N"], kind))
+            block = {}
+            continue
+        if line[:2] in ("N:", "H:"):
+            block[line[0]] = line.split("=", 1)[1].strip().strip('"') if "=" in line else ""
+    seen, out = set(), []
+    for n, k in kinds:
+        if (n, k) not in seen:
+            seen.add((n, k))
+            out.append((n, k))
+    return out
+
+
+def hardware_report():
+    """Everything about this PC as [(section, [(name, value), ...]), ...]."""
+    R = []
+    chassis = CHASSIS.get(rd("/sys/class/dmi/id/chassis_type"), "")
+    maker, model = dmi("sys_vendor"), dmi("product_name") or dmi("product_family")
+    board = " ".join(x for x in (dmi("board_vendor"), dmi("board_name")) if x)
+    bios = " ".join(x for x in (dmi("bios_vendor"), dmi("bios_version")) if x)
+    R.append(("This PC", [("Device name", socket.gethostname()), ("Manufacturer", maker), ("Model", model),
+                          ("Type", chassis), ("Motherboard", board),
+                          ("BIOS / UEFI", f"{bios}" + (f" ({dmi('bios_date')})" if dmi("bios_date") else ""))]))
+    osr = dict(re.findall(r'^(\w+)="?([^"\n]*)"?', rd("/etc/os-release"), re.M))
+    up = float(rd("/proc/uptime", "0").split()[0])
+    R.append(("Stoa", [("Version", rd("/usr/share/stoa/VERSION") or osr.get("VERSION", "")),
+                       ("Based on", osr.get("PRETTY_NAME", "") if "Stoa" not in osr.get("PRETTY_NAME", "") else
+                        "Ubuntu " + osr.get("VERSION_ID", "")),
+                       ("Kernel", os.uname().release), ("Up time", duration(up))]))
+    flags = cpu_flags()
+    _cur, mx, base = cpu_freqs()
+    feats = [n for f, n in (("avx2", "AVX2"), ("avx512f", "AVX-512"), ("sha_ni", "SHA"), ("aes", "AES")) if f in flags]
+    R.append(("Processor", [("Model", cpu_model()), ("Cores", f"{physical_cores()} cores, {NCPU} threads"),
+                            ("Speed", (f"{base:.2f} GHz base, " if base else "") + (f"up to {mx:.2f} GHz" if mx else "")),
+                            ("Cache", ", ".join(f"L{n} {cache_size(n)}" for n in (2, 3) if cache_size(n))),
+                            ("Features", ", ".join(feats) + (" (good for Stoa AI Local)" if "avx2" in flags else "")),
+                            ("Virtualisation", "Supported" if flags & {"vmx", "svm"} else "Not supported or turned off"),
+                            ("Temperature", f"{t:.0f} °C" if (t := hwmon_temp({"k10temp", "coretemp", "zenpower", "cpu_thermal"})) else "")]))
+    m = meminfo()
+    mods, slots = memory_modules()
+    rows = [("Installed", f"{round(m.get('MemTotal', 0) / 2**30)} GB" + (f" ({human(m.get('MemTotal', 0))} usable)")),
+            ("Slots", f"{len(mods)} of {slots} used" if mods else "")]
+    for mod in mods:
+        rows.append((mod["slot"], " ".join(x for x in (human(mod["size"]), mod["type"],
+                     f"{mod['speed']} MT/s" if mod["speed"] else "", mod["maker"], mod["part"].strip()) if x)))
+    zram = [d for d in glob.glob("/sys/block/zram*")]
+    rows.append(("Swap", (human(m.get("SwapTotal", 0)) + (" compressed in memory (zram)" if zram else ""))
+                 if m.get("SwapTotal") else "None"))
+    R.append(("Memory", rows))
+    rows = []
+    for g in gpus():
+        vram = int(rd(f"{g['dev']}/mem_info_vram_total", "0") or 0)
+        if g["vendor"] == "0x10de" and not vram:
+            nv = nvidia_smi()
+            vram = int(nv[0][2]) if nv else 0
+        rows.append((g["name"], f"driver {g['driver']}" + (f", {human(vram)} video memory" if vram else "")))
+    for v in vulkan_devices():
+        soft = "CPU" in v.get("deviceType", "")
+        rows.append(("Vulkan (games, Stoa AI)", v["deviceName"] + (" - software only" if soft else
+                     f" ({v.get('driverName', '')} {v.get('driverInfo', '')})".replace(" )", ")"))))
+    for d in displays():
+        rows.append((f"Display {d['name']}", " · ".join(x for x in (d["desc"], d["mode"],
+                     f"scale {d['scale']}" if d.get("scale") not in (None, "1.000000") else "") if x)))
+    R.append(("Graphics and displays", rows))
+    rows, blk = [], lsblk()
+    for i, d in enumerate(disks()):
+        rows.append((f"Disk {i}: {d['model']}", f"{human(d['size'])} {d['kind']}"))
+        for dev in blk.get("blockdevices", []):
+            if dev["name"] != d["name"]:
+                continue
+            stack = list(dev.get("children") or [])
+            while stack:
+                p = stack.pop(0)
+                stack[0:0] = p.get("children") or []
+                if p.get("type") == "crypt":
+                    rows.append(("    Encrypted", f"{p['name']} is locked with a password (LUKS)"))
+                if p.get("mountpoint") and p.get("fssize"):
+                    mp = p["mountpoint"]
+                    rows.append((f"    {mp}", f"{human(int(p.get('fsused') or 0))} used of {human(int(p['fssize']))}"
+                                 f" ({p.get('fstype') or ''}{', ' + p['label'] if p.get('label') else ''})"))
+                elif p.get("fstype") in ("ntfs", "exfat", "vfat", "ext4", "btrfs", "xfs") and not p.get("mountpoint") \
+                        and int(p.get("size") or 0) > 2**30:
+                    rows.append((f"    {p.get('label') or p['name']}", f"{human(int(p['size']))} {p['fstype']}, not opened"))
+    R.append(("Storage", rows))
+    rows = []
+    for n in net_ifaces():
+        v4, _v6 = ip_addrs(n["name"])
+        sp = rd(f"/sys/class/net/{n['name']}/speed")
+        rows.append((("Wi-Fi " if n["wifi"] else "Ethernet ") + n["name"],
+                     " · ".join(x for x in (pci_name(n["slot"]) if re.match(r"[0-9a-f]{4}:", n["slot"]) else n["driver"],
+                                            ", ".join(v4) or "not connected",
+                                            f"{sp} Mbps" if sp.isdigit() and int(sp) > 0 else "",
+                                            rd(f"/sys/class/net/{n['name']}/address")) if x)))
+    R.append(("Network", rows))
+    cards = re.findall(r"^\s*\d+ \[[^\]]+\]: (.+)\n\s+(.+)$", rd("/proc/asound/cards"), re.M)
+    R.append(("Sound", [(c[0].split(" - ")[-1].strip(), c[1].split(" at ")[0].strip()) for c in cards]))
+    R.append(("Keyboards, mice and controllers", [(n, k) for n, k in input_devices()]))
+    R.append(("USB devices", usb_devices()))
+    rows = []
+    for b in sorted(glob.glob("/sys/class/power_supply/BAT*")):
+        full, design = (int(rd(f"{b}/{k}", "0") or 0) for k in ("energy_full", "energy_full_design"))
+        if not design:
+            full, design = (int(rd(f"{b}/{k}", "0") or 0) for k in ("charge_full", "charge_full_design"))
+        rows.append((os.path.basename(b), f"{rd(f'{b}/capacity')}% · {rd(f'{b}/status')}" +
+                     (f" · holds {full * 100 // design}% of its original charge" if design else "")))
+    if rows:
+        R.append(("Battery", rows))
+    tpm = rd("/sys/class/tpm/tpm0/tpm_version_major")
+    crypt = any(p.get("type") == "crypt" for p in _walk(blk.get("blockdevices", [])))
+    sig = max((os.path.getmtime(f) for f in glob.glob("/var/lib/clamav/daily.c?d")), default=0)
+    R.append(("Security", [("TPM", f"TPM {tpm}.0" if tpm else ("Present" if os.path.exists("/dev/tpm0") else "Not found")),
+                           ("Start-up mode", "UEFI" if os.path.isdir("/sys/firmware/efi") else "Legacy BIOS"),
+                           ("Secure Boot", secure_boot()),
+                           ("Drive encryption", "On" if crypt else "Off"),
+                           ("Firewall", "On" if re.search(r"^ENABLED=yes", rd("/etc/ufw/ufw.conf"), re.M) else "Off"),
+                           ("Virus signatures", time.strftime("updated %d %b %Y", time.localtime(sig)) if sig else
+                            "not downloaded yet")]))
+    return [(s, [(k, v) for k, v in rows if v]) for s, rows in R if any(v for _k, v in rows)]
+
+
+def _walk(devs):
+    for d in devs:
+        yield d
+        yield from _walk(d.get("children") or [])
+
+
+def report_text(report=None):
+    lines = [f"Stoa PC report - {time.strftime('%d %b %Y %H:%M')}"]
+    for section, rows in report or hardware_report():
+        lines += ["", section, "-" * len(section)]
+        lines += [f"{k}: {v}" if not k.startswith("    ") else f"  {k.strip()}: {v}" for k, v in rows]
+    return "\n".join(lines) + "\n"
+
+
+# ------------------------------------------------------------------ start-up apps
+
+def autostart_entries():
+    """The apps that start when you sign in (~/.config/autostart, which apps like Steam and Discord use)."""
+    from gi.repository import GLib
+    out = []
+    for path in sorted(glob.glob(os.path.join(AUTOSTART, "*.desktop"))):
+        kf = GLib.KeyFile()
+        try:
+            kf.load_from_file(path, GLib.KeyFileFlags.NONE)
+        except GLib.Error:
+            continue
+
+        def get(key, default=""):
+            try:
+                return kf.get_locale_string("Desktop Entry", key, None)
+            except GLib.Error:
+                return default
+        only = [x for x in get("OnlyShowIn").split(";") if x]
+        notin = [x for x in get("NotShowIn").split(";") if x]
+        if (only and not DESKTOPS & set(only)) or DESKTOPS & set(notin):
+            continue
+        tryexec = get("TryExec")
+        if tryexec and not shutil.which(tryexec):
+            continue
+        out.append({"path": path, "name": get("Name") or os.path.basename(path)[:-8], "comment": get("Comment"),
+                    "icon": get("Icon") or "application-x-executable",
+                    "enabled": get("Hidden").lower() != "true" and get("X-GNOME-Autostart-enabled").lower() != "false"})
+    return out
+
+
+def set_autostart(path, enabled):
+    from gi.repository import GLib
+    kf = GLib.KeyFile()
+    kf.load_from_file(path, GLib.KeyFileFlags.KEEP_COMMENTS | GLib.KeyFileFlags.KEEP_TRANSLATIONS)
+    kf.set_string("Desktop Entry", "Hidden", "false" if enabled else "true")
+    try:
+        kf.get_string("Desktop Entry", "X-GNOME-Autostart-enabled")
+        kf.set_string("Desktop Entry", "X-GNOME-Autostart-enabled", "true" if enabled else "false")
+    except GLib.Error:
+        pass
+    kf.save_to_file(path)
+
+
+def run_autostart():
+    from gi.repository import Gio
+    time.sleep(3)  # let the desktop finish appearing first
+    for e in autostart_entries():
+        if not e["enabled"]:
+            continue
+        try:
+            a = Gio.DesktopAppInfo.new_from_filename(e["path"])
+            delay = 0
+            try:
+                delay = int(a.get_string("X-GNOME-Autostart-Delay") or 0)
+            except (TypeError, ValueError):
+                pass
+            if delay:
+                time.sleep(min(delay, 30))
+            a.launch([], None)
+        except Exception as ex:  # noqa: BLE001 - one broken entry mustn't stop the others
+            print(f"stoa-taskmgr: couldn't start {e['name']}: {ex}", file=sys.stderr)
+
+
+# ================================================================== the window
+
+def gui(page):
+    sys.path.insert(0, "/usr/lib/stoa")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
+    import stoa_ui as ui
+
+    CSS = b"""
+    .tm-nav { background: #0e1424; border-right: 1px solid #222c45; }
+    .tm-nav row { padding: 10px 14px; margin: 2px 8px; border-radius: 8px; color: #c9d3ea; background: transparent; }
+    .tm-nav row:selected { background: #24345f; color: #ffffff; }
+    .tm-nav row:hover:not(:selected) { background: #1a2340; }
+    .tm-big { font-size: 22px; font-weight: 800; }
+    .tm-sub { color: #9aa6c4; font-size: 13px; }
+    .tm-stat-k { color: #8a93aa; font-size: 12px; }
+    .tm-stat-v { font-size: 17px; font-weight: 700; }
+    .tm-stat-s { font-size: 13px; }
+    list.tm-dev { background: #121829; }
+    .tm-dev row { padding: 6px 8px; margin: 2px 6px; border-radius: 8px; background: transparent; }
+    .tm-dev row:selected { background: #24345f; }
+    .tm-key { color: #8a93aa; font-size: 13px; }
+    treeview.view { background: #121829; color: #e8ecf5; }
+    treeview.view:selected { background: #2a3f75; color: #ffffff; }
+    treeview.view header button { background: #121829; color: #c9d3ea; border: none;
+        border-bottom: 1px solid #2a3550; border-right: 1px solid #1e2740; padding: 2px 8px; }
+    button.f-danger:disabled, button.f-ghost:disabled { opacity: 0.45; }
+    .tm-bar { padding: 8px 12px; border-top: 1px solid #222c45; }
+    """
+
+    class Graph(Gtk.DrawingArea):
+        def __init__(self, colour, series=1, maxv=100.0, grid=True, height=220, fmt=None):
+            super().__init__()
+            self.colour, self.maxv, self.grid, self.fmt = colour, maxv, grid, fmt
+            self.data = [deque([0.0] * HISTORY, maxlen=HISTORY) for _ in range(series)]
+            self.set_size_request(64 if not grid else -1, height)
+            self.connect("draw", self._draw)
+
+        def push(self, *vals):
+            for s, v in zip(self.data, vals):
+                s.append(float(v))
+            self.queue_draw()
+
+        def _draw(self, w, cr):
+            a = w.get_allocation()
+            W, H = a.width, a.height
+            r, g, b = self.colour
+            cr.set_source_rgba(r, g, b, 0.05)
+            cr.rectangle(0, 0, W, H)
+            cr.fill()
+            cr.set_line_width(1)
+            if self.grid:
+                cr.set_source_rgba(r, g, b, 0.16)
+                for i in range(1, 10):
+                    x = int(W * i / 10) + 0.5
+                    cr.move_to(x, 0)
+                    cr.line_to(x, H)
+                for i in range(1, 4):
+                    y = int(H * i / 4) + 0.5
+                    cr.move_to(0, y)
+                    cr.line_to(W, y)
+                cr.stroke()
+            cr.set_source_rgba(r, g, b, 0.7)
+            cr.rectangle(0.5, 0.5, W - 1, H - 1)
+            cr.stroke()
+            top = self.maxv or max(1.0, max(max(s) for s in self.data) * 1.2)
+            for i, s in enumerate(self.data):
+                pts = [(W * j / (HISTORY - 1), H - (H - 2) * min(v, top) / top) for j, v in enumerate(s)]
+                if i == 0:
+                    cr.move_to(0, H)
+                    for p in pts:
+                        cr.line_to(*p)
+                    cr.line_to(W, H)
+                    cr.close_path()
+                    cr.set_source_rgba(r, g, b, 0.20)
+                    cr.fill()
+                cr.move_to(*pts[0])
+                for p in pts[1:]:
+                    cr.line_to(*p)
+                cr.set_source_rgba(r, g, b, 1)
+                cr.set_line_width(1.6 if self.grid else 1.1)
+                cr.set_dash([5, 3] if i else [])
+                cr.stroke()
+                cr.set_dash([])
+            if self.grid and not self.maxv and self.fmt:
+                cr.set_source_rgba(0.85, 0.88, 0.95, 0.8)
+                cr.select_font_face("Inter")
+                cr.set_font_size(11)
+                t = self.fmt(top)
+                ext = cr.text_extents(t)
+                cr.move_to(W - ext.width - 6, 14)
+                cr.show_text(t)
+
+    # -------------------------------------------------------------- Processes
+    class Processes(Gtk.Box):
+        SECTIONS = [("app", "Apps"), ("background", "Background processes"), ("system", "System and other accounts")]
+        COLS = dict(icon=0, name=1, cpu=2, cpu_t=3, mem=4, mem_t=5, disk=6, disk_t=7, key=8, kind=9, order=10,
+                    weight=11, tip=12)
+
+        def __init__(self, win):
+            super().__init__(orientation=Gtk.Orientation.VERTICAL)
+            self.win = win
+            self.index = app_index()
+            self.query = ""
+            top = Gtk.Box(spacing=8)
+            top.set_border_width(10)
+            title = ui.css(Gtk.Label(label="Processes", xalign=0), "f-title")
+            top.pack_start(title, False, False, 4)
+            self.search = ui.css(Gtk.SearchEntry(placeholder_text="Type a name to find it"), "f-search")
+            self.search.set_size_request(280, -1)
+            self.search.connect("search-changed", self._search)
+            top.pack_start(self.search, False, False, 12)
+            self.show_all_users = Gtk.CheckButton(label="Show system processes")
+            self.show_all_users.connect("toggled", lambda *_: self.win.tick())
+            top.pack_end(self.show_all_users, False, False, 0)
+            newtask = ui.css(Gtk.Button(label="Run new task"), "f-ghost")
+            newtask.connect("clicked", lambda *_: ui.spawn("stoa-shell", "run"))
+            top.pack_end(newtask, False, False, 0)
+            self.pack_start(top, False, False, 0)
+
+            self.store = Gtk.TreeStore(Gio.Icon, str, float, str, GObject.TYPE_INT64, str, float, str, str, str,
+                                       int, int, str)
+            self.filter = self.store.filter_new()
+            self.filter.set_visible_func(self._visible)
+            self.view = Gtk.TreeView(model=self.filter, enable_search=False, headers_clickable=True)
+            self.view.set_tooltip_column(self.COLS["tip"])
+            self.view.connect("button-press-event", self._press)
+            self.view.get_selection().connect("changed", self._selected)
+            self.view.connect("key-press-event", self._key)
+            c = self.COLS
+            name_col = Gtk.TreeViewColumn("Name")
+            pix = Gtk.CellRendererPixbuf()
+            name_col.pack_start(pix, False)
+            name_col.add_attribute(pix, "gicon", c["icon"])
+            txt = Gtk.CellRendererText(ellipsize=Pango.EllipsizeMode.END)
+            name_col.pack_start(txt, True)
+            name_col.add_attribute(txt, "text", c["name"])
+            name_col.add_attribute(txt, "weight", c["weight"])
+            name_col.set_expand(True)
+            name_col.set_resizable(True)
+            self.view.append_column(name_col)
+            self.heads = {}
+            for key, label, width in (("cpu", "CPU", 90), ("mem", "Memory", 110), ("disk", "Disk", 100)):
+                rend = Gtk.CellRendererText(xalign=1)
+                col = Gtk.TreeViewColumn(label, rend, text=c[key + "_t"])
+                col.set_cell_data_func(rend, self._heat, key)
+                col.set_min_width(width)
+                head = Gtk.Label(xalign=1)
+                head.set_markup(f"<b>0%</b>\n<small>{label}</small>")
+                head.show()
+                col.set_widget(head)
+                col.set_alignment(1.0)
+                self.heads[key] = (head, label)
+                self.view.append_column(col)
+            for col, key in zip(self.view.get_columns(), ("name", "cpu", "mem", "disk")):
+                col.set_clickable(True)
+                col.connect("clicked", self._sort_clicked, key)
+            for key in ("name", "cpu", "mem", "disk"):
+                self.store.set_sort_func(c[key], self._sort, key)
+            self.sort = ("cpu", Gtk.SortType.DESCENDING)
+            self.store.set_sort_column_id(c["cpu"], Gtk.SortType.DESCENDING)
+            self.view.get_columns()[1].set_sort_indicator(True)
+            self.view.get_columns()[1].set_sort_order(Gtk.SortType.DESCENDING)
+            sw = Gtk.ScrolledWindow(vexpand=True)
+            sw.add(self.view)
+            self.pack_start(sw, True, True, 0)
+
+            bar = ui.css(Gtk.Box(spacing=8), "tm-bar")
+            self.status = ui.css(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END), "f-muted")
+            bar.pack_start(self.status, True, True, 0)
+            self.ask = ui.css(Gtk.Button(label="✦ What is this?"), "f-ghost")
+            self.ask.set_tooltip_text("Ask Stoa AI what the selected item is and whether it's safe")
+            self.ask.connect("clicked", lambda *_: self._ask_ai())
+            bar.pack_end(self.ask, False, False, 0)
+            self.end = ui.css(Gtk.Button(label="End task"), "f-danger")
+            self.end.connect("clicked", lambda *_: self.end_task())
+            bar.pack_end(self.end, False, False, 0)
+            self.pack_start(bar, False, False, 0)
+
+            self.sec, self.giters, self.citers, self.gkind, self.groups = {}, {}, {}, {}, {}
+            for i, (k, label) in enumerate(self.SECTIONS):
+                it = self.store.append(None, None)
+                self.store.set(it, {c["name"]: label, c["key"]: "sec:" + k, c["kind"]: "section", c["order"]: i,
+                                    c["weight"]: 700, c["cpu_t"]: "", c["mem_t"]: "", c["disk_t"]: "", c["tip"]: ""})
+                self.sec[k] = it
+            self.unexpanded = {"app", "background"}
+            self._selected()
+
+        # sorting: sections always stay in order; groups and their processes sort by the chosen column
+        def _sort(self, model, a, b, key):
+            c = self.COLS
+            if model[a][c["kind"]] == "section" or model[b][c["kind"]] == "section":
+                d = (model[a][c["order"]] > model[b][c["order"]]) - (model[a][c["order"]] < model[b][c["order"]])
+                return -d if self.sort[1] == Gtk.SortType.DESCENDING else d
+            if key == "name":
+                x, y = model[a][c["name"]].lower(), model[b][c["name"]].lower()
+            else:
+                x, y = model[a][c[key]], model[b][c[key]]
+            return (x > y) - (x < y)
+
+        def _sort_clicked(self, col, key):
+            order = Gtk.SortType.DESCENDING if key != "name" else Gtk.SortType.ASCENDING
+            if self.sort[0] == key:
+                order = Gtk.SortType.ASCENDING if self.sort[1] == Gtk.SortType.DESCENDING else Gtk.SortType.DESCENDING
+            self.sort = (key, order)
+            for cc in self.view.get_columns():
+                cc.set_sort_indicator(cc is col)
+            col.set_sort_order(order)
+            self.store.set_sort_column_id(self.COLS[key], order)
+
+        def _heat(self, col, cell, model, it, key):
+            c = self.COLS
+            if model[it][c["kind"]] == "section":
+                cell.set_property("cell-background-set", False)
+                return
+            v = model[it][c[key]]
+            frac = {"cpu": v / 60, "mem": v / (1.5 * 2**30), "disk": v / (40 * 2**20)}[key]
+            rgba = Gdk.RGBA()
+            rgba.parse(f"rgba(240,160,48,{min(0.55, 0.06 + frac * 0.5):.2f})" if frac > 0.02 else "rgba(79,140,255,0.05)")
+            cell.set_property("cell-background-rgba", rgba)
+
+        def _match(self, model, it):
+            c = self.COLS
+            return self.query in model[it][c["name"]].lower() or self.query in model[it][c["tip"]].lower()
+
+        def _visible(self, model, it, _data):
+            c = self.COLS
+            kind = model[it][c["kind"]]
+            if kind == "section":
+                ch = model.iter_children(it)
+                while ch:
+                    if not self.query or self._visible(model, ch, None):
+                        return True
+                    ch = model.iter_next(ch)
+                return False
+            if not self.query or not kind:
+                return True
+            if self._match(model, it):
+                return True
+            if kind == "group":
+                ch = model.iter_children(it)
+                while ch:
+                    if self._match(model, ch):
+                        return True
+                    ch = model.iter_next(ch)
+                return False
+            parent = model.iter_parent(it)
+            return bool(parent) and self._match(model, parent)
+
+        def _search(self, entry):
+            self.query = entry.get_text().strip().lower()
+            self.filter.refilter()
+            if self.query:
+                self.view.expand_all()
+
+        def _row(self, it, icon, name, cpu, mem, disk, key, kind, tip):
+            c = self.COLS
+            self.store.set(it, {c["icon"]: icon, c["name"]: name, c["cpu"]: cpu,
+                                c["cpu_t"]: f"{cpu:.1f}%" if cpu >= 0.05 else "0%", c["mem"]: mem,
+                                c["mem_t"]: human(mem), c["disk"]: disk,
+                                c["disk_t"]: f"{disk / 1048576:.1f} MB/s" if disk >= 52429 else "0 MB/s",
+                                c["key"]: key, c["kind"]: kind, c["weight"]: 400, c["tip"]: tip})
+
+        def update(self, procs, totals):
+            c = self.COLS
+            groups = build_groups(procs, self.index, self.show_all_users.get_active())
+            self.groups = groups
+            default_icon = Gio.ThemedIcon.new("application-x-executable")
+            for key in [k for k in self.giters if k not in groups or groups[k]["kind"] != self.gkind[k]]:
+                self.store.remove(self.giters.pop(key))
+                self.citers.pop(key, None)
+                self.gkind.pop(key, None)
+            for key, g in groups.items():
+                it = self.giters.get(key)
+                if it is None:
+                    it = self.store.append(self.sec[g["kind"]], None)
+                    self.giters[key], self.citers[key], self.gkind[key] = it, {}, g["kind"]
+                icon = g["app"].get_icon() if g["app"] and g["app"].get_icon() else default_icon
+                self._row(it, icon, g["label"], g["cpu"], g["mem"], g["disk"], key, "group", g["tip"])
+                want = {p["pid"]: p for p in g["procs"]} if len(g["procs"]) > 1 else {}
+                cit = self.citers[key]
+                for pid in [p for p in cit if p not in want]:
+                    self.store.remove(cit.pop(pid))
+                for pid, p in want.items():
+                    ci = cit.get(pid)
+                    if ci is None:
+                        ci = cit[pid] = self.store.append(it, None)
+                    self._row(ci, None, p["name"], p["cpu"], p["mem"], p["disk"], f"pid:{pid}", "proc",
+                              f"{p['cmd'][:300]}\nPID {pid}")
+            counts = {k: 0 for k, _ in self.SECTIONS}
+            for g in groups.values():
+                counts[g["kind"]] += 1
+            for k, label in self.SECTIONS:
+                self.store.set(self.sec[k], {c["name"]: f"{label} ({counts[k]})"})
+            if self.query:
+                self.filter.refilter()
+            for k in [k for k in self.unexpanded if counts[k]]:
+                ok, fit = self.filter.convert_child_iter_to_iter(self.sec[k])
+                if ok:  # open each section the first time it has something in it
+                    self.view.expand_row(self.filter.get_path(fit), False)
+                    self.unexpanded.discard(k)
+            for key, (head, label) in self.heads.items():
+                head.set_markup(f"<b>{totals[key]}</b>\n<small>{label}</small>")
+            self._selected()
+
+        def _selection(self):
+            model, it = self.view.get_selection().get_selected()
+            if not it:
+                return None, [], ""
+            c = self.COLS
+            key, name = model[it][c["key"]], model[it][c["name"]]
+            if key.startswith("pid:"):
+                return key, [int(key[4:])], name
+            g = self.groups.get(key)
+            return (key, [p["pid"] for p in g["procs"]], name) if g else (None, [], "")
+
+        def _selected(self, *_):
+            key, pids, name = self._selection()
+            self.end.set_sensitive(bool(pids))
+            self.ask.set_sensitive(bool(pids))
+            n = sum(len(g["procs"]) for g in self.groups.values())
+            self.status.set_text(f"{name} · {len(pids)} process{'es' if len(pids) != 1 else ''}" if pids else
+                                 f"{n} processes · select one to end it or find out what it is")
+
+        def _key(self, _w, ev):
+            if ev.keyval == Gdk.KEY_Delete:
+                self.end_task()
+                return True
+            return False
+
+        def _press(self, view, ev):
+            if ev.button != 3:
+                return False
+            hit = view.get_path_at_pos(int(ev.x), int(ev.y))
+            if not hit:
+                return False
+            view.get_selection().select_path(hit[0])
+            key, pids, name = self._selection()
+            if not pids:
+                return True
+            m = Gtk.Menu()
+            items = [("End task", self.end_task), ("Ask Stoa AI what this is", self._ask_ai),
+                     ("Open file location", lambda: self._open_location(pids[0])),
+                     ("Copy command line", lambda: self._copy_cmd(pids[0]))]
+            for label, fn in items:
+                mi = Gtk.MenuItem(label=label)
+                mi.connect("activate", lambda _i, fn=fn: fn())
+                m.append(mi)
+            m.show_all()
+            m.popup_at_pointer(ev)
+            return True
+
+        def _proc(self, pid):
+            for g in self.groups.values():
+                for p in g["procs"]:
+                    if p["pid"] == pid:
+                        return p
+            return None
+
+        def _open_location(self, pid):
+            try:
+                exe = os.readlink(f"/proc/{pid}/exe")
+            except OSError:
+                p = self._proc(pid)
+                exe = shutil.which(p["cmd"].split()[0]) if p and p["cmd"] else None
+            if exe:
+                ui.spawn("thunar", os.path.dirname(exe))
+
+        def _copy_cmd(self, pid):
+            p = self._proc(pid)
+            if p:
+                Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(p["cmd"], -1)
+
+        def _ask_ai(self):
+            key, pids, name = self._selection()
+            if not pids:
+                return
+            cmds = "; ".join(sorted({(self._proc(p) or {}).get("cmd", "")[:200] for p in pids[:5]}))
+            ui.spawn("stoa-assistant", "--ask",
+                     f"In Task Manager I see \"{name}\" running ({len(pids)} process(es), command: {cmds}). "
+                     "What is it, is it safe, and is it OK to end it?")
+
+        def end_task(self):
+            key, pids, name = self._selection()
+            if not pids:
+                return
+            procs = [p for p in (self._proc(x) for x in pids) if p]
+            critical = {p["name"] for p in procs} & {"labwc", "stoa-session", "lightdm", "Xorg", "systemd"}
+            if critical and not self._confirm(f"End {name}?", "This is part of Stoa itself. Ending it signs you "
+                                              "out, and anything not saved is lost.", "Sign out and end it"):
+                return
+            if any(p["uid"] != ME for p in procs):
+                if not self._confirm(f"End {name}?", "This belongs to the system or another account, so Stoa needs "
+                                     "your password. Ending system processes can stop parts of Stoa working until "
+                                     "you restart.", "End it"):
+                    return
+                subprocess.Popen(["pkexec", "kill", "-TERM", *map(str, pids)])
+                return
+            for p in pids:
+                try:
+                    os.kill(p, signal.SIGTERM)
+                except OSError:
+                    pass
+            GLib.timeout_add_seconds(4, self._still_running, pids, name)
+
+        def _still_running(self, pids, name):
+            alive = [p for p in pids if os.path.exists(f"/proc/{p}") and rd(f"/proc/{p}/stat").split(") ")[-1][:1] != "Z"]
+            if alive and self._confirm(f"{name} isn't closing", "It may be stuck. Force it to close? "
+                                       "Anything not saved in it will be lost.", "Force close"):
+                for p in alive:
+                    try:
+                        os.kill(p, signal.SIGKILL)
+                    except OSError:
+                        pass
+            return False
+
+        def _confirm(self, title, text, ok):
+            d = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=Gtk.MessageType.WARNING, text=title)
+            d.format_secondary_text(text)
+            d.add_button("Cancel", Gtk.ResponseType.CANCEL)
+            b = d.add_button(ok, Gtk.ResponseType.OK)
+            b.get_style_context().add_class("f-danger")
+            r = d.run()
+            d.destroy()
+            return r == Gtk.ResponseType.OK
+
+    # -------------------------------------------------------------- Performance
+    class Device:
+        def __init__(self, kind, title, subtitle, series=1, maxv=100.0, label="% Utilisation", fmt=None):
+            self.kind, self.title, self.subtitle, self.label = kind, title, subtitle, label
+            colour = COLOURS[kind]
+            self.big = Graph(colour, series, maxv, True, 240, fmt)
+            self.mini = Graph(colour, series, maxv, False, 38)
+            self.stats = {}
+            self.summary = ""
+
+        def push(self, *vals):
+            self.big.push(*vals)
+            self.mini.push(*vals)
+
+    class Performance(Gtk.Box):
+        def __init__(self, win):
+            super().__init__()
+            self.win = win
+            self.devs = []
+            self.prev_cpu = cpu_sample()
+            self.prev_disk = diskstats()
+            self.prev_net = {}
+            self.slow = 0
+            mx = cpu_freqs()[1]
+            self.cpu = Device("cpu", "CPU", cpu_model())
+            self.cpu.static = {"Cores": str(physical_cores()), "Logical processors": str(NCPU),
+                               "Max speed": f"{mx:.2f} GHz" if mx else "", "L2 cache": cache_size(2),
+                               "L3 cache": cache_size(3),
+                               "Virtualisation": "Supported" if cpu_flags() & {"vmx", "svm"} else "Not available"}
+            self.devs.append(self.cpu)
+            m = meminfo()
+            self.mem = Device("mem", "Memory", f"{round(m['MemTotal'] / 2**30)} GB", label="Memory usage")
+            mods, slots = memory_modules()
+            speeds = {x["speed"] for x in mods if x["speed"]}
+            self.mem.static = {"Speed": f"{max(speeds, key=int)} MT/s" if speeds else "",
+                               "Slots used": f"{len(mods)} of {slots}" if mods else "",
+                               "Type": mods[0]["type"] if mods else "", "Form factor": mods[0]["form"] if mods else ""}
+            self.devs.append(self.mem)
+            mounts = {}
+            for d in _walk(lsblk().get("blockdevices", [])):
+                if d.get("mountpoint"):
+                    mounts.setdefault(d["name"], d["mountpoint"])
+            for i, d in enumerate(disks()):
+                dev = Device("disk", f"Disk {i} ({d['kind']})", d["model"], label="Active time")
+                dev.disk = d["name"]
+                mps = [mp for n, mp in mounts.items() if n.startswith(d["name"])]
+                dev.static = {"Capacity": human(d["size"]), "Type": d["kind"],
+                              "Opened at": ", ".join(sorted(mps)[:4])}
+                self.devs.append(dev)
+            for n in net_ifaces():
+                dev = Device("net", "Wi-Fi" if n["wifi"] else "Ethernet", n["name"], series=2, maxv=None,
+                             label="Throughput", fmt=bits)
+                dev.iface, dev.wifi = n["name"], n["wifi"]
+                dev.static = {"Adapter": pci_name(n["slot"]) if re.match(r"[0-9a-f]{4}:", n["slot"]) else n["driver"]}
+                self.devs.append(dev)
+            for i, g in enumerate(gpus()):
+                dev = Device("gpu", f"GPU {i}", g["name"],
+                             label="Graphics clock" if g["vendor"] == "0x8086" else "% Utilisation")
+                dev.gpu = g
+                dev.static = {"Driver": g["driver"], "Location": f"PCI {g['slot']}"}
+                self.devs.append(dev)
+
+            side = Gtk.ScrolledWindow()
+            side.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            side.set_size_request(250, -1)
+            self.list = ui.css(Gtk.ListBox(), "tm-dev")
+            for dev in self.devs:
+                row = Gtk.ListBoxRow()
+                hb = Gtk.Box(spacing=10)
+                hb.pack_start(dev.mini, False, False, 0)
+                vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                vb.pack_start(ui.css(Gtk.Label(label=dev.title, xalign=0), "f-h2"), False, False, 0)
+                dev.sum_label = ui.css(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END), "tm-sub")
+                vb.pack_start(dev.sum_label, False, False, 0)
+                hb.pack_start(vb, True, True, 0)
+                row.add(hb)
+                row.dev = dev
+                self.list.add(row)
+            self.list.connect("row-selected", lambda _l, row: row and self.show(row.dev))
+            side.add(self.list)
+            self.pack_start(side, False, False, 0)
+            self.detail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            self.detail.set_border_width(18)
+            dsw = Gtk.ScrolledWindow(hexpand=True)
+            dsw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            dsw.add(self.detail)
+            self.pack_start(dsw, True, True, 0)
+            self.current = None
+            self.list.select_row(self.list.get_row_at_index(0))
+
+        def show(self, dev):
+            for ch in self.detail.get_children():
+                self.detail.remove(ch)
+            self.current = dev
+            head = Gtk.Box()
+            head.pack_start(ui.css(Gtk.Label(label=dev.title, xalign=0), "tm-big"), False, False, 0)
+            sub = ui.css(Gtk.Label(label=dev.subtitle, xalign=1, ellipsize=Pango.EllipsizeMode.END), "tm-sub")
+            head.pack_end(sub, True, True, 0)
+            self.detail.pack_start(head, False, False, 0)
+            lab = Gtk.Box()
+            lab.pack_start(ui.css(Gtk.Label(label=dev.label, xalign=0), "tm-stat-k"), False, False, 0)
+            if dev.kind == "net":
+                lab.pack_end(ui.css(Gtk.Label(label="── Receive   ┄┄ Send"), "tm-stat-k"), False, False, 0)
+            elif dev.big.maxv:
+                lab.pack_end(ui.css(Gtk.Label(label="100%"), "tm-stat-k"), False, False, 0)
+            self.detail.pack_start(lab, False, False, 0)
+            if dev.big.get_parent():
+                dev.big.get_parent().remove(dev.big)
+            self.detail.pack_start(dev.big, False, False, 0)
+            self.detail.pack_start(ui.css(Gtk.Label(label="2 minutes", xalign=0), "tm-stat-k"), False, False, 0)
+            cols = Gtk.Box(spacing=40)
+            self.live_grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=3,
+                                         column_spacing=26, row_spacing=10, homogeneous=False)
+            self.live_grid.set_valign(Gtk.Align.START)
+            self.static_grid = Gtk.Grid(column_spacing=18, row_spacing=4)
+            for i, (k, v) in enumerate((k, v) for k, v in dev.static.items() if v):
+                self.static_grid.attach(ui.css(Gtk.Label(label=k, xalign=0), "tm-key"), 0, i, 1, 1)
+                self.static_grid.attach(ui.css(Gtk.Label(label=v, xalign=0, selectable=True), "tm-stat-s"), 1, i, 1, 1)
+            cols.pack_start(self.live_grid, True, True, 0)
+            cols.pack_start(self.static_grid, False, False, 0)
+            self.detail.pack_start(cols, False, False, 6)
+            self.live = {}
+            self.detail.show_all()
+            self._fill_live()
+
+        def _fill_live(self):
+            dev = self.current
+            if not dev:
+                return
+            for k, v in dev.stats.items():
+                if k not in self.live:
+                    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                    box.pack_start(ui.css(Gtk.Label(label=k, xalign=0), "tm-stat-k"), False, False, 0)
+                    val = ui.css(Gtk.Label(xalign=0), "tm-stat-v")
+                    box.pack_start(val, False, False, 0)
+                    box.show_all()
+                    self.live_grid.add(box)
+                    self.live[k] = val
+                self.live[k].set_text(v)
+
+        def update(self, procs, dt):
+            self.slow = (self.slow + 1) % 5
+            cur = cpu_sample()
+            pcts = []
+            for (b0, t0), (b1, t1) in zip(self.prev_cpu, cur):
+                pcts.append(100.0 * (b1 - b0) / (t1 - t0) if t1 > t0 else 0.0)
+            self.prev_cpu = cur
+            u = pcts[0] if pcts else 0
+            freq = cpu_freqs()[0]
+            self.cpu.push(u)
+            temp = hwmon_temp({"k10temp", "coretemp", "zenpower", "cpu_thermal"})
+            self.cpu.stats = {"Utilisation": f"{u:.0f}%", "Speed": f"{freq:.2f} GHz" if freq else "-",
+                              "Processes": str(len(procs)), "Threads": str(sum(p["threads"] for p in procs.values())),
+                              "Up time": duration(float(rd("/proc/uptime", "0").split()[0]))}
+            if temp:
+                self.cpu.stats["Temperature"] = f"{temp:.0f} °C"
+            self.cpu.summary = f"{u:.0f}%  {freq:.2f} GHz" if freq else f"{u:.0f}%"
+            m = meminfo()
+            total, avail = m.get("MemTotal", 1), m.get("MemAvailable", 0)
+            used = total - avail
+            self.mem.push(100.0 * used / total)
+            self.mem.stats = {"In use": human(used), "Available": human(avail),
+                              "Cached": human(m.get("Cached", 0) + m.get("Buffers", 0) + m.get("SReclaimable", 0)),
+                              "Committed": f"{human(m.get('Committed_AS', 0))} / {human(m.get('CommitLimit', 0))}",
+                              "Swap in use": f"{human(m.get('SwapTotal', 0) - m.get('SwapFree', 0))} / {human(m.get('SwapTotal', 0))}"}
+            self.mem.summary = f"{human(used)} / {human(total)} ({100 * used // total}%)"
+            ds = diskstats()
+            for dev in self.devs:
+                if dev.kind == "disk":
+                    a, b = self.prev_disk.get(dev.disk), ds.get(dev.disk)
+                    if a and b and dt:
+                        r, w = (b[0] - a[0]) / dt, (b[1] - a[1]) / dt
+                        active = min(100.0, (b[2] - a[2]) / (dt * 10))
+                    else:
+                        r = w = active = 0.0
+                    dev.push(active)
+                    dev.stats = {"Active time": f"{active:.0f}%", "Read speed": human(r, True), "Write speed": human(w, True)}
+                    dev.summary = f"{active:.0f}%  ·  R {human(r, True)}  W {human(w, True)}"
+                elif dev.kind == "net":
+                    base = f"/sys/class/net/{dev.iface}/statistics"
+                    rx, tx = int(rd(f"{base}/rx_bytes", "0")), int(rd(f"{base}/tx_bytes", "0"))
+                    prx, ptx = self.prev_net.get(dev.iface, (rx, tx))
+                    self.prev_net[dev.iface] = (rx, tx)
+                    rr, tr = (rx - prx) / dt if dt else 0, (tx - ptx) / dt if dt else 0
+                    dev.push(rr, tr)
+                    dev.stats.update({"Receive": bits(rr), "Send": bits(tr)})
+                    if self.slow == 1 or "IPv4 address" not in dev.stats:
+                        v4, v6 = ip_addrs(dev.iface)
+                        dev.stats["IPv4 address"] = ", ".join(v4) or "Not connected"
+                        dev.stats["IPv6 address"] = (v6 or ["-"])[0]
+                        if dev.wifi:
+                            dev.stats["Network"] = wifi_ssid(dev.iface) or "-"
+                        sp = rd(f"/sys/class/net/{dev.iface}/speed")
+                        if sp.isdigit() and int(sp) > 0:
+                            dev.stats["Link speed"] = f"{int(sp) / 1000:g} Gbps" if int(sp) >= 1000 else f"{sp} Mbps"
+                    dev.summary = f"R {bits(rr)}  S {bits(tr)}"
+                elif dev.kind == "gpu":
+                    g, d = dev.gpu, dev.gpu["dev"]
+                    util = vused = vtotal = gtemp = None
+                    if g["vendor"] == "0x1002":
+                        util = float(rd(f"{d}/gpu_busy_percent", "0") or 0)
+                        vused, vtotal = int(rd(f"{d}/mem_info_vram_used", "0") or 0), int(rd(f"{d}/mem_info_vram_total", "0") or 0)
+                        t = glob.glob(f"{d}/hwmon/hwmon*/temp1_input")
+                        gtemp = int(rd(t[0], "0") or 0) / 1000 if t else None
+                    elif g["vendor"] == "0x10de":
+                        nv = nvidia_smi()
+                        if nv:
+                            util, vused, vtotal, gtemp = nv[0]
+                    elif g["vendor"] == "0x8086":
+                        gt = glob.glob(f"{g['card']}/gt_cur_freq_mhz") or glob.glob(f"{g['card']}/device/tile0/gt0/freq0/cur_freq")
+                        mx = glob.glob(f"{g['card']}/gt_max_freq_mhz") or glob.glob(f"{g['card']}/device/tile0/gt0/freq0/max_freq")
+                        if gt and mx:
+                            cur_f, max_f = int(rd(gt[0], "0") or 0), int(rd(mx[0], "1") or 1)
+                            util = 100.0 * cur_f / max_f
+                            dev.stats["Clock"] = f"{cur_f} MHz of {max_f}"
+                    dev.push(util or 0)
+                    if util is not None:
+                        dev.stats["Utilisation" if g["vendor"] != "0x8086" else "Clock speed"] = f"{util:.0f}%"
+                    if vtotal:
+                        dev.stats["Video memory"] = f"{human(vused or 0)} / {human(vtotal)}"
+                    if gtemp:
+                        dev.stats["Temperature"] = f"{gtemp:.0f} °C"
+                    if util is None and g["vendor"] == "0x10de":
+                        dev.stats["Usage"] = "Needs the NVIDIA driver (Settings > Drivers)"
+                    dev.summary = f"{util:.0f}%" + (f"  ({gtemp:.0f} °C)" if gtemp else "") if util is not None else g["driver"]
+            self.prev_disk = ds
+            for row in self.list.get_children():
+                row.dev.sum_label.set_text(row.dev.summary)
+            self._fill_live()
+            return {"cpu": f"{u:.0f}%", "mem": f"{100 * used // total}%",
+                    "disk": f"{max((d.big.data[0][-1] for d in self.devs if d.kind == 'disk'), default=0):.0f}%"}
+
+    # -------------------------------------------------------------- Start-up apps
+    class Startup(Gtk.Box):
+        def __init__(self, win):
+            super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.win = win
+            self.set_border_width(18)
+            head = Gtk.Box()
+            vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            vb.pack_start(ui.css(Gtk.Label(label="Start-up apps", xalign=0), "f-title"), False, False, 0)
+            vb.pack_start(ui.css(Gtk.Label(label="Apps that open by themselves when you sign in. Turning one off "
+                                           "makes start-up quicker; you can still open it from the Stoa menu.",
+                                           xalign=0, wrap=True), "f-muted"), False, False, 0)
+            head.pack_start(vb, True, True, 0)
+            add = ui.css(Gtk.Button(label="Add an app", valign=Gtk.Align.CENTER), "f-primary")
+            add.connect("clicked", lambda *_: self.add_app())
+            head.pack_end(add, False, False, 0)
+            self.pack_start(head, False, False, 0)
+            sw = Gtk.ScrolledWindow(vexpand=True)
+            self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            sw.add(self.list)
+            self.pack_start(sw, True, True, 0)
+            self.pack_start(ui.css(Gtk.Label(label="Stoa's own parts - the taskbar, notifications and Stoa Protect's "
+                                             "download scanning - always start.", xalign=0, wrap=True), "f-muted"),
+                            False, False, 0)
+            self.refresh()
+
+        def refresh(self):
+            for c in self.list.get_children():
+                c.destroy()
+            entries = autostart_entries()
+            if not entries:
+                self.list.pack_start(ui.css(Gtk.Label(label="No apps start by themselves. Apps such as Steam and "
+                                                      "Discord appear here when you tell them to open at start-up.",
+                                                      xalign=0, wrap=True), "f-muted"), False, False, 12)
+            for e in entries:
+                card = ui.css(Gtk.Box(spacing=12), "f-card")
+                img = Gtk.Image.new_from_icon_name(e["icon"], Gtk.IconSize.DND)
+                if os.path.isabs(e["icon"]) and os.path.exists(e["icon"]):
+                    img = Gtk.Image.new_from_gicon(Gio.FileIcon.new(Gio.File.new_for_path(e["icon"])), Gtk.IconSize.DND)
+                img.set_pixel_size(32)
+                card.pack_start(img, False, False, 0)
+                vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                vb.pack_start(ui.css(Gtk.Label(label=e["name"], xalign=0), "f-h2"), False, False, 0)
+                if e["comment"]:
+                    vb.pack_start(ui.css(Gtk.Label(label=e["comment"], xalign=0, ellipsize=Pango.EllipsizeMode.END),
+                                         "f-muted"), False, False, 0)
+                card.pack_start(vb, True, True, 0)
+                sw = Gtk.Switch(active=e["enabled"], valign=Gtk.Align.CENTER)
+                sw.connect("notify::active", lambda s, _p, path=e["path"]: set_autostart(path, s.get_active()))
+                card.pack_end(sw, False, False, 0)
+                self.list.pack_start(card, False, False, 0)
+            self.list.show_all()
+
+        def add_app(self):
+            d = Gtk.Dialog(title="Add a start-up app", transient_for=self.win, modal=True)
+            d.set_default_size(420, 480)
+            area = d.get_content_area()
+            area.set_border_width(12)
+            area.set_spacing(8)
+            search = ui.css(Gtk.SearchEntry(placeholder_text="Find an app"), "f-search")
+            area.pack_start(search, False, False, 0)
+            lb = Gtk.ListBox()
+            apps = sorted((a for a in Gio.AppInfo.get_all() if a.should_show()), key=lambda a: a.get_name().lower())
+            for a in apps:
+                row = Gtk.ListBoxRow()
+                hb = Gtk.Box(spacing=10)
+                hb.set_border_width(6)
+                img = Gtk.Image.new_from_gicon(a.get_icon(), Gtk.IconSize.LARGE_TOOLBAR) if a.get_icon() else Gtk.Image()
+                hb.pack_start(img, False, False, 0)
+                hb.pack_start(Gtk.Label(label=a.get_name(), xalign=0), True, True, 0)
+                row.add(hb)
+                row.app = a
+                lb.add(row)
+            lb.set_filter_func(lambda row: search.get_text().lower() in row.app.get_name().lower())
+            search.connect("search-changed", lambda *_: lb.invalidate_filter())
+            sw = Gtk.ScrolledWindow(vexpand=True)
+            sw.add(lb)
+            area.pack_start(sw, True, True, 0)
+            d.add_button("Cancel", Gtk.ResponseType.CANCEL)
+            d.add_button("Add", Gtk.ResponseType.OK).get_style_context().add_class("f-primary")
+            lb.connect("row-activated", lambda *_: d.response(Gtk.ResponseType.OK))
+            d.show_all()
+            if d.run() == Gtk.ResponseType.OK and lb.get_selected_row():
+                a = lb.get_selected_row().app
+                src = a.get_filename()
+                if src:
+                    os.makedirs(AUTOSTART, exist_ok=True)
+                    dst = os.path.join(AUTOSTART, os.path.basename(src))
+                    shutil.copyfile(src, dst)
+                    set_autostart(dst, True)
+                    self.refresh()
+            d.destroy()
+
+    # -------------------------------------------------------------- About this PC
+    class System(Gtk.Box):
+        def __init__(self, win):
+            super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.win = win
+            self.report = None
+            self.set_border_width(18)
+            head = Gtk.Box(spacing=8)
+            vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            model = " ".join(x for x in (dmi("sys_vendor"), dmi("product_name")) if x)
+            vb.pack_start(ui.css(Gtk.Label(label=model or "About this PC", xalign=0), "f-title"), False, False, 0)
+            vb.pack_start(ui.css(Gtk.Label(label="Everything inside this PC. Copy it when you ask for help or "
+                                           "buy upgrades.", xalign=0, wrap=True), "f-muted"), False, False, 0)
+            head.pack_start(vb, True, True, 0)
+            for label, fn, cls in (("✦ Ask Stoa AI", self.ask, "f-primary"), ("Save…", self.save, "f-ghost"),
+                                   ("Copy", self.copy, "f-ghost")):
+                b = ui.css(Gtk.Button(label=label, valign=Gtk.Align.CENTER), cls)
+                b.connect("clicked", lambda *_, fn=fn: fn())
+                head.pack_end(b, False, False, 0)
+            self.pack_start(head, False, False, 0)
+            sw = Gtk.ScrolledWindow(vexpand=True)
+            sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            self.body = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=2,
+                                    min_children_per_line=1, column_spacing=12, row_spacing=12, homogeneous=False)
+            self.body.set_valign(Gtk.Align.START)
+            spin = Gtk.Spinner(active=True)
+            self.body.add(spin)
+            sw.add(self.body)
+            self.pack_start(sw, True, True, 0)
+            threading.Thread(target=self._load, daemon=True).start()
+
+        def _load(self):
+            try:
+                rep = hardware_report()
+            except Exception as e:  # noqa: BLE001
+                rep = [("Error", [("Couldn't read the hardware", str(e))])]
+            GLib.idle_add(self._show, rep)
+
+        def _show(self, rep):
+            self.report = rep
+            for c in self.body.get_children():
+                c.destroy()
+            for section, rows in rep:
+                card = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6), "f-card")
+                card.pack_start(ui.css(Gtk.Label(label=section, xalign=0), "f-h2"), False, False, 0)
+                grid = Gtk.Grid(column_spacing=16, row_spacing=3)
+                for i, (k, v) in enumerate(rows):
+                    kl = ui.css(Gtk.Label(label=k.strip(), xalign=0, yalign=0), "tm-key")
+                    if k.startswith("    "):
+                        kl.set_margin_start(14)
+                    kl.set_max_width_chars(28)
+                    kl.set_ellipsize(Pango.EllipsizeMode.END)
+                    kl.set_tooltip_text(k.strip())
+                    grid.attach(kl, 0, i, 1, 1)
+                    vl = Gtk.Label(label=v, xalign=0, selectable=True, wrap=True, max_width_chars=48)
+                    vl.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                    grid.attach(vl, 1, i, 1, 1)
+                card.pack_start(grid, False, False, 0)
+                card.set_size_request(440, -1)
+                self.body.add(card)
+            self.body.show_all()
+            return False
+
+        def copy(self):
+            if self.report:
+                Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(report_text(self.report), -1)
+
+        def save(self):
+            if not self.report:
+                return
+            d = Gtk.FileChooserDialog(title="Save PC report", transient_for=self.win, action=Gtk.FileChooserAction.SAVE)
+            d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+            d.set_do_overwrite_confirmation(True)
+            d.set_current_folder(GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) or os.path.expanduser("~"))
+            d.set_current_name(f"PC report {time.strftime('%Y-%m-%d')}.txt")
+            if d.run() == Gtk.ResponseType.OK:
+                with open(d.get_filename(), "w") as f:
+                    f.write(report_text(self.report))
+            d.destroy()
+
+        def ask(self):
+            if self.report:
+                ui.spawn("stoa-assistant", "--ask", "Here is my PC's hardware. Explain what it's good at, what games "
+                         "and Stoa AI Local models it can run well, and which upgrade would help most.\n\n"
+                         + report_text(self.report))
+
+    # -------------------------------------------------------------- window
+    class TaskManager(Gtk.Window):
+        PAGES = [("processes", "Processes", "view-list-symbolic"),
+                 ("performance", "Performance", "utilities-system-monitor-symbolic"),
+                 ("startup", "Start-up apps", "system-run-symbolic"),
+                 ("system", "About this PC", "computer-symbolic")]
+
+        def __init__(self, page):
+            super().__init__(title="Task Manager")
+            self.set_default_size(*ui.fit_size(1080, 720))
+            self.set_icon_name("utilities-system-monitor")
+            ui.css(self, "f-dark")
+            self.connect("destroy", Gtk.main_quit)
+            self.connect("key-press-event", self._key)
+            box = Gtk.Box()
+            self.add(box)
+            nav_box = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "tm-nav")
+            nav_box.set_size_request(200, -1)
+            title = Gtk.Box(spacing=8)
+            title.set_border_width(14)
+            title.pack_start(Gtk.Image.new_from_icon_name("utilities-system-monitor", Gtk.IconSize.LARGE_TOOLBAR), False, False, 0)
+            title.pack_start(ui.css(Gtk.Label(label="Task Manager", xalign=0), "f-h2"), False, False, 0)
+            nav_box.pack_start(title, False, False, 0)
+            self.nav = Gtk.ListBox()
+            for key, label, icon in self.PAGES:
+                row = Gtk.ListBoxRow()
+                hb = Gtk.Box(spacing=12)
+                hb.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
+                hb.pack_start(Gtk.Label(label=label, xalign=0), True, True, 0)
+                row.add(hb)
+                row.key = key
+                self.nav.add(row)
+            nav_box.pack_start(self.nav, True, True, 0)
+            ui.css(self.nav, "tm-nav")
+            box.pack_start(nav_box, False, False, 0)
+            self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=120)
+            box.pack_start(self.stack, True, True, 0)
+            self.scanner = Scanner()
+            self.procs = Processes(self)
+            self.perf = Performance(self)
+            self.stack.add_named(self.procs, "processes")
+            self.stack.add_named(self.perf, "performance")
+            self.built = {"processes", "performance"}
+            self.nav.connect("row-selected", self._nav)
+            self.last = None
+            self.tick()
+            GLib.timeout_add_seconds(TICK, self.tick)
+            self.show_all()
+            self.go(page)
+
+        def go(self, page):
+            for row in self.nav.get_children():
+                if row.key == page:
+                    self.nav.select_row(row)
+
+        def _nav(self, _lb, row):
+            if not row:
+                return
+            if row.key not in self.built:
+                w = {"startup": Startup, "system": System}[row.key](self)
+                w.show_all()
+                self.stack.add_named(w, row.key)
+                self.built.add(row.key)
+            elif row.key == "startup":
+                self.stack.get_child_by_name("startup").refresh()
+            self.stack.set_visible_child_name(row.key)
+
+        def _key(self, _w, ev):
+            if ev.state & Gdk.ModifierType.CONTROL_MASK and ev.keyval in (Gdk.KEY_f, Gdk.KEY_F):
+                self.go("processes")
+                self.procs.search.grab_focus()
+                return True
+            if ev.keyval == Gdk.KEY_Escape and self.procs.search.get_text():
+                self.procs.search.set_text("")
+                return True
+            return False
+
+        def tick(self):
+            now = time.monotonic()
+            dt = now - self.last if self.last else None
+            self.last = now
+            procs = self.scanner.scan()
+            totals = self.perf.update(procs, dt)
+            self.procs.update(procs, totals)
+            return True
+
+    ui.apply_css()
+    p = Gtk.CssProvider()
+    p.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+    TaskManager(page)
+    Gtk.main()
+
+
+def main():
+    a = sys.argv[1:]
+    if a and a[0] in ("-h", "--help"):
+        print(__doc__)
+    elif a and a[0] == "--report":
+        sys.stdout.write(report_text())
+    elif a and a[0] == "--autostart":
+        run_autostart()
+    else:
+        page = a[0] if a and a[0] in ("processes", "performance", "startup", "system") else "processes"
+        gui(page)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Privileged half of fpkg. Runs as root (via sudo/pkexec) and only performs a fixed set of
 operations. Repositories are only ever taken from the system catalog, never from arguments."""
+import json
 import os
+import pwd
 import re
 import subprocess
 import sys
@@ -111,6 +113,72 @@ def install_drivers():
         sh(["ubuntu-drivers", "install"])
 
 
+# Drives Stoa can open at start-up: (filesystem type to mount with, options). @UID@/@GID@ = the person asking.
+DRIVE_FS = {
+    "ntfs": ("ntfs3", "uid=@UID@,gid=@GID@,umask=022,windows_names,prealloc,nofail,x-gvfs-show"),
+    "exfat": ("exfat", "uid=@UID@,gid=@GID@,umask=022,nofail,x-gvfs-show"),
+    "ext4": ("ext4", "defaults,nofail,x-gvfs-show"),
+    "btrfs": ("btrfs", "defaults,nofail,x-gvfs-show"),
+    "xfs": ("xfs", "defaults,nofail,x-gvfs-show"),
+}
+
+
+def mount_drive(uuid):
+    """Open a data drive (e.g. a Windows games drive) at /mnt/<name> now and at every start-up."""
+    if not re.fullmatch(r"[0-9A-Fa-f-]{4,40}", uuid):
+        sys.exit("invalid drive id")
+    dev = os.path.realpath(f"/dev/disk/by-uuid/{uuid}")
+    if not os.path.exists(dev):
+        dev = subprocess.run(["blkid", "-U", uuid], capture_output=True, text=True, env=ENV).stdout.strip()
+    if not dev or not os.path.exists(dev):
+        sys.exit("That drive isn't connected.")
+    r = subprocess.run(["lsblk", "-J", "-n", "-o", "PATH,FSTYPE,LABEL,MOUNTPOINT,PARTTYPENAME", dev],
+                       capture_output=True, text=True, env=ENV)
+    info = (json.loads(r.stdout or "{}").get("blockdevices") or [{}])[0]
+    for key in ("fstype", "label"):  # lsblk relies on udev; ask the drive itself if udev hasn't seen it yet
+        if not info.get(key):
+            info[key] = subprocess.run(["blkid", "-s", "TYPE" if key == "fstype" else "LABEL", "-o", "value", dev],
+                                       capture_output=True, text=True, env=ENV).stdout.strip() or None
+    fs = info.get("fstype") or ""
+    if fs not in DRIVE_FS:
+        sys.exit(f"Stoa can't open {fs or 'this kind of'} drives automatically.")
+    if info.get("mountpoint") in ("/", "/boot", "/boot/efi", "/home", "[SWAP]") or "EFI" in (info.get("parttypename") or ""):
+        sys.exit("That's one of Stoa's own drives.")
+    uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or 1000)
+    gid = pwd.getpwuid(uid).pw_gid
+    fstab = open("/etc/fstab").read() if os.path.exists("/etc/fstab") else ""
+    m = re.search(rf"^UUID={re.escape(uuid)}\s+(\S+)", fstab, re.M | re.I)
+    if m:
+        mp = m.group(1)
+    else:
+        name = re.sub(r"[^A-Za-z0-9_.-]+", "-", info.get("label") or "").strip("-.") or f"drive-{uuid[:8].lower()}"
+        mp, n = f"/mnt/{name}", 2
+        while os.path.exists(mp) and (os.path.ismount(mp) or os.listdir(mp)):
+            mp, n = f"/mnt/{name}-{n}", n + 1
+        kind, opts = DRIVE_FS[fs]
+        opts = opts.replace("@UID@", str(uid)).replace("@GID@", str(gid))
+        with open("/etc/fstab", "a") as f:
+            f.write(f"{'' if fstab.endswith(chr(10)) or not fstab else chr(10)}"
+                    f"# {info.get('label') or uuid}: opened at start-up by Stoa\n"
+                    f"UUID={uuid}\t{mp}\t{kind}\t{opts}\t0\t0\n")
+    if info.get("mountpoint") and info["mountpoint"] != mp:
+        subprocess.run(["umount", dev], env=ENV)  # it was opened temporarily (Files); reopen it in its permanent place
+    os.makedirs(mp, exist_ok=True)
+    subprocess.run(["systemctl", "daemon-reload"], env=ENV, capture_output=True)
+    if not os.path.ismount(mp):
+        r = subprocess.run(["mount", mp], capture_output=True, text=True, env=ENV)
+        if r.returncode:
+            log = subprocess.run(["dmesg"], capture_output=True, text=True).stdout[-3000:].lower()
+            if fs == "ntfs" and any(w in (r.stderr.lower() + log) for w in ("dirty", "hibernat", "chkdsk", "force")):
+                print(mp)
+                sys.exit("Windows didn't fully shut down this drive, so it can't be opened safely yet. Start Windows, "
+                         "turn off Fast Startup (Control Panel > Power Options > Choose what the power buttons do), "
+                         "then choose Shut down. Stoa will open the drive next time it starts.")
+            print(mp)
+            sys.exit((r.stderr or "The drive couldn't be opened.").strip())
+    print(mp)
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("fpkg-helper must run as root")
@@ -141,6 +209,8 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "mount-drive" and args:
+        mount_drive(args[0])
     elif op == "refresh":
         sh(["apt-get", "update"])
     else:

@@ -118,6 +118,13 @@ missing package, change a setting) and give clear steps for the rest.
 "razer" (OpenRazer driver + Polychromatic app: lighting, per-key colours, DPI, polling rate, battery) and, for \
 mixed brands, "openrgb". Synapse lighting profiles can't be imported; recreate the effect in Polychromatic. \
 Razer devices are already kept out of USB power saving, which stops them freezing.
+- Task Manager: open_app "Task Manager" to see what's running, end frozen apps, watch CPU, memory, disk, \
+network and graphics use, choose start-up apps, or see every part inside the PC (About this PC). Ctrl+Shift+Esc \
+opens it too. get_system_info includes the full hardware list (CPU, graphics card, memory sticks, drives, USB).
+- Steam games already installed on another drive (for example from Windows): open_app "Find Steam games on \
+other drives". It opens the drive at every start-up, lets Steam see it and adds the games so they show as \
+installed - no re-download. Windows games then need "Enable Steam Play for all other titles" in Steam > \
+Settings > Compatibility.
 - Accounts: open_app "Accounts" to add people, change passwords or administrators; the power menu has \
 "Switch user".
 - Printers: most network and USB printers are found automatically. For anything else, open_app \
@@ -229,7 +236,8 @@ TOOLS = [
     },
     {
         "name": "get_system_info",
-        "description": "Stoa version, memory, disk space, network, battery and uptime.",
+        "description": "Stoa version, memory, disk space, network, battery, uptime and the full hardware list "
+                       "(model, CPU, graphics, memory sticks, drives, USB devices, TPM, Secure Boot).",
         "eager_input_streaming": True,
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
@@ -980,4 +988,5 @@ class Agent:
             f"Disk (/):\n{sh('df', '-h', '/')}",
             f"Network: {kind} {net}".strip(),
             f"Battery: {bat[0]}%{' charging' if bat[1] else ''}" if bat else "Battery: none (desktop or VM)",
+            sh("stoa-taskmgr", "--report"),
         ])

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Find Steam games on other drives
+Comment=Add games already installed on another drive (for example from Windows) to Steam, without downloading them again
+Exec=stoa-game-setup steam-drives
+Icon=com.valvesoftware.Steam
+Categories=Game;
+Keywords=steam;library;libraries;drive;games;installed;windows;import;

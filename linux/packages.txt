@@ -116,6 +116,9 @@ libheif-plugin-libde265
 libavif-gdk-pixbuf
 # Performance: compressed swap in RAM
 systemd-zram-generator
+# Task Manager: graphics card and USB device names
+pciutils
+usbutils
 # Security: firewall, app confinement, antivirus, drive encryption with TPM unlock
 ufw
 apparmor

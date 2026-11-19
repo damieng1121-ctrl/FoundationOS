@@ -4,7 +4,7 @@ import datetime
 import gi
 
 gi.require_version("GtkLayerShell", "0.1")
-from gi.repository import GdkPixbuf, GLib, Gtk, GtkLayerShell  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, GtkLayerShell  # noqa: E402
 
 import apps  # noqa: E402
 import system  # noqa: E402
@@ -116,6 +116,9 @@ class Taskbar(Gtk.Window):
         GLib.timeout_add_seconds(20, self._updates)
         GLib.timeout_add_seconds(1800, self._updates)
         self.connect("size-allocate", self._on_size)
+        # Right-click on an empty part of the bar: Task Manager and friends, like other desktops.
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.connect("button-press-event", self._bar_menu)
 
     # ---------------------------------------------------------------- clock & status
     def _tick(self):
@@ -225,6 +228,19 @@ class Taskbar(Gtk.Window):
         i = (self.cycle.get(key, -1) + 1) % len(ws)
         self.cycle[key] = i
         self.windows.send("activate", ws[i]["id"])
+
+    def _bar_menu(self, _w, ev):
+        if ev.button != 3:
+            return False
+        m = Gtk.Menu()
+        for label, cmd in (("Task Manager", "stoa-taskmgr"), ("Settings", "stoa-settings"),
+                           ("Wallpaper and personalise", "stoa-settings personalise")):
+            it = Gtk.MenuItem(label=label)
+            it.connect("activate", lambda _i, c=cmd: apps.run_command(c))
+            m.append(it)
+        m.show_all()
+        m.popup_at_pointer(ev)
+        return True
 
     def _press(self, ev, a, key, ws):
         if ev.button == 2 and a:

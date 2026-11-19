@@ -294,10 +294,12 @@ class RunDialog(Popup):
 
     # Stoa names first; common names from other systems also work for people switching over.
     ALIASES = {"files": "thunar", "editor": "mousepad", "text": "mousepad", "terminal": "foot",
-               "settings": "stoa-settings", "store": "stoa-store", "monitor": "gnome-system-monitor",
+               "settings": "stoa-settings", "store": "stoa-store", "monitor": "stoa-taskmgr",
                "ai": "stoa-assistant", "calculator": "gnome-calculator",
                "notepad": "mousepad", "explorer": "thunar", "cmd": "foot", "powershell": "foot",
-               "control": "stoa-settings", "taskmgr": "gnome-system-monitor", "calc": "gnome-calculator",
+               "control": "stoa-settings", "taskmgr": "stoa-taskmgr",
+               "resmon": "stoa-taskmgr performance", "perfmon": "stoa-taskmgr performance",
+               "msinfo32": "stoa-taskmgr system", "dxdiag": "stoa-taskmgr system", "msconfig": "stoa-taskmgr startup", "calc": "gnome-calculator",
                "mspaint": "stoa-store", "regedit": "stoa-settings", "winver": "stoa-settings about"}
 
     def on_open(self):

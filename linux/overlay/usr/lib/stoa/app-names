@@ -14,7 +14,6 @@ RENAME = {
     "org.xfce.ristretto.desktop": ("Image Viewer", "View your pictures"),
     "atril.desktop": ("Document Viewer", "Open PDF and other documents"),
     "org.codeberg.dnkl.foot.desktop": ("Terminal", "Run commands"),
-    "org.gnome.SystemMonitor.desktop": ("System Monitor", "See and end running programs, check performance"),
     "org.gnome.Epiphany.desktop": ("Web Browser", "Browse the web"),
     "engrampa.desktop": ("Archive Manager", "Open and create .zip and other archives"),
     "pavucontrol.desktop": ("Sound", "Choose speakers, microphones and app volumes"),
@@ -27,6 +26,7 @@ HIDE = [
     "install-debian.desktop", "wine.desktop", "winetricks.desktop", "display-im6.q16.desktop",
     "debian-uxterm.desktop", "debian-xterm.desktop", "python3.12.desktop", "info.desktop", "vim.desktop",
     "org.gnome.Epiphany.WebAppProvider.desktop", "mpv.desktop", "x11-display.desktop",
+    "org.gnome.SystemMonitor.desktop",  # replaced by Stoa's Task Manager
 ]
 
 

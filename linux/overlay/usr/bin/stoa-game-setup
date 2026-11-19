@@ -3,18 +3,23 @@
 
   stoa-game-setup jedi-academy          Jedi Academy on OpenJK (modern engine), using your Steam/GOG game files
   stoa-game-setup mod-organizer [game]  Mod Organizer 2 for Fallout, Skyrim and more (via MO2-LINT, for Steam/Heroic)
-  stoa-game-setup remove <name>         undo either of the above
+  stoa-game-setup steam-drives          find Steam games already installed on other drives (e.g. from Windows)
+                                        and add them to Steam, so they show as installed
+  stoa-game-setup remove <name>         undo jedi-academy or mod-organizer
 
-Runs as the user; nothing here needs administrator rights.
+Runs as the user; only opening a drive at start-up asks for an administrator password.
 """
 import glob
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
+import random
 import tempfile
+import time
 import urllib.request
 
 HOME = os.path.expanduser("~")
@@ -254,6 +259,235 @@ def remove_mod_organizer():
             f"  {MO2_BIN} uninstall")
 
 
+# ------------------------------------------------------------ Steam libraries on other drives
+
+STEAM_FLATPAK = "com.valvesoftware.Steam"
+LIB_SKIP = {"windows", "$recycle.bin", "system volume information", "programdata", "recovery", "$windows.~bt",
+            "$winreagent", "users", "appdata", "proc", "sys", "dev", "boot", "efi", "msocache", "perflogs",
+            "lost+found", "snap", "intel", "amd", "nvidia", "drivers", "onedrivetemp"}
+TEMP_FS = {"ntfs", "ntfs3", "fuseblk", "exfat", "vfat"}  # can't hold Proton's Windows settings folders
+
+
+def steam_root():
+    """(Steam's own folder, installed as Flatpak?) - the one holding libraryfolders.vdf."""
+    for root, flat in ((os.path.join(HOME, ".var/app", STEAM_FLATPAK, ".local/share/Steam"), True),
+                       (os.path.join(DATA, "Steam"), False), (os.path.join(HOME, ".steam/steam"), False)):
+        if os.path.exists(os.path.join(root, "steamapps/libraryfolders.vdf")):
+            return os.path.realpath(root), flat
+    return None, False
+
+
+def steam_installed():
+    return shutil.which("steam") or subprocess.run(["flatpak", "info", STEAM_FLATPAK], capture_output=True).returncode == 0
+
+
+def steam_running():
+    return subprocess.run(["pgrep", "-x", "steam"], capture_output=True).returncode == 0 or \
+        subprocess.run(["pgrep", "-f", "steamwebhelper"], capture_output=True).returncode == 0
+
+
+def block_devices():
+    r = subprocess.run(["lsblk", "-J", "-b", "-o", "PATH,TYPE,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINT,PARTTYPENAME"],
+                       capture_output=True, text=True)
+    out, stack = [], list(json.loads(r.stdout or "{}").get("blockdevices") or [])
+    while stack:
+        d = stack.pop(0)
+        stack[0:0] = d.get("children") or []
+        out.append(d)
+    return out
+
+
+def drives_to_open(devs):
+    """Data drives Stoa could open at start-up: not opened yet, or only opened for now from Files."""
+    fstab = open("/etc/fstab").read() if os.path.exists("/etc/fstab") else ""
+    out = []
+    for d in devs:
+        mp, uuid = d.get("mountpoint") or "", d.get("uuid") or ""
+        if (d.get("fstype") not in ("ntfs", "exfat", "ext4", "btrfs", "xfs") or not uuid or int(d.get("size") or 0) < 8 * 2**30
+                or re.search(r"EFI|reserved|recovery|swap", d.get("parttypename") or "", re.I)
+                or re.search(rf"^UUID={re.escape(uuid)}\s", fstab, re.M | re.I)):
+            continue
+        if mp and not mp.startswith(("/media/", "/run/media/")):
+            continue
+        out.append(d)
+    return out
+
+
+def find_libraries(top, depth=4):
+    """Steam library folders under a drive: ones with a steamapps folder holding installed games."""
+    libs = []
+    for cur, dirs, _files in os.walk(top):
+        rel = os.path.relpath(cur, top)
+        level = 0 if rel == "." else rel.count(os.sep) + 1
+        if "steamapps" in dirs:
+            sa = os.path.join(cur, "steamapps")
+            if glob.glob(os.path.join(sa, "appmanifest_*.acf")) or os.path.exists(os.path.join(cur, "libraryfolder.vdf")):
+                libs.append(cur)
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d.lower() not in LIB_SKIP and not d.startswith(".") and level < depth]
+    return libs
+
+
+def library_games(lib):
+    games = {}
+    for acf in glob.glob(os.path.join(lib, "steamapps/appmanifest_*.acf")):
+        try:
+            text = open(acf, errors="replace").read()
+        except OSError:
+            continue
+        appid = re.search(r'"appid"\s+"(\d+)"', text)
+        if appid:
+            name = re.search(r'"name"\s+"([^"]*)"', text)
+            size = re.search(r'"SizeOnDisk"\s+"(\d+)"', text)
+            games[appid.group(1)] = (name.group(1) if name else appid.group(1), size.group(1) if size else "0")
+    return games
+
+
+def add_to_vdf(vdf, lib, games):
+    """Add a library to Steam's list of library folders (Steam must be closed)."""
+    text = open(vdf, errors="replace").read()
+    if re.search(r'"path"\s+"' + re.escape(lib) + '"', text):
+        return
+    shutil.copyfile(vdf, vdf + ".stoa-backup")
+    n = max([int(x) for x in re.findall(r'^\t"(\d+)"\s*$', text, re.M)] or [-1]) + 1
+    own = os.path.join(lib, "libraryfolder.vdf")
+    cid = re.search(r'"contentid"\s+"(-?\d+)"', open(own, errors="replace").read()) if os.path.exists(own) else None
+    apps = "".join(f'\t\t\t"{a}"\t\t"{size}"\n' for a, (_n, size) in sorted(games.items(), key=lambda x: int(x[0])))
+    block = (f'\t"{n}"\n\t{{\n\t\t"path"\t\t"{lib.replace(chr(92), chr(92) * 2)}"\n\t\t"label"\t\t""\n'
+             f'\t\t"contentid"\t\t"{cid.group(1) if cid else random.randint(10**17, 9 * 10**18)}"\n'
+             f'\t\t"totalsize"\t\t"0"\n\t\t"update_clean_bytes_tally"\t\t"0"\n\t\t"time_last_update_verified"\t\t"0"\n'
+             f'\t\t"apps"\n\t\t{{\n{apps}\t\t}}\n\t}}\n')
+    end = text.rstrip().rfind("}")
+    with open(vdf + ".stoa-new", "w") as f:
+        f.write(text[:end] + block + text[end:])
+    os.replace(vdf + ".stoa-new", vdf)
+
+
+def mount_fstype(path):
+    best, fs = "", ""
+    for line in open("/proc/self/mounts"):
+        f = line.split()
+        mp = f[1].replace("\\040", " ")
+        if (path == mp or path.startswith(mp.rstrip("/") + "/")) and len(mp) >= len(best):
+            best, fs = mp, f[2]
+    return fs, best
+
+
+def ask(question, title="Steam games on other drives"):
+    if not GUI:
+        return input(question + " [Y/n] ").strip().lower() in ("", "y", "yes")
+    return subprocess.run(["zenity", "--question", "--no-wrap", f"--title={title}", f"--text={question}"]).returncode == 0
+
+
+def setup_steam_drives():
+    if not steam_installed():
+        fail("Steam isn't installed yet. Install it from the Stoa Store, open it and sign in, then run this again.")
+    root, flat = steam_root()
+    if not root:
+        fail("Open Steam and sign in once first (so it sets up its library), then run this again.")
+
+    # 1. Drives that aren't opened at start-up yet - Steam can only see games on drives that are always there.
+    devs = block_devices()
+    todo = drives_to_open(devs)
+    if todo:
+        rows = []
+        for d in todo:
+            rows += ["TRUE", d["uuid"], d.get("label") or os.path.basename(d["path"]),
+                     f"{int(d['size']) / 1e9:.0f} GB {d['fstype'].upper()}", d.get("mountpoint") or "not opened"]
+        if GUI:
+            r = subprocess.run(["zenity", "--list", "--checklist", "--title=Steam games on other drives",
+                                "--width=620", "--height=360",
+                                "--text=Stoa found these drives. Tick the ones with Steam games on them, and Stoa "
+                                "will open them every time it starts\n(you'll be asked for your password once):",
+                                "--column=", "--column=id", "--column=Drive", "--column=Size", "--column=Now",
+                                "--hide-column=2", "--print-column=2", "--separator=|", *rows],
+                               capture_output=True, text=True)
+            chosen = [x for x in r.stdout.strip().split("|") if x]
+        else:
+            chosen = [d["uuid"] for d in todo if ask(f"Open {d.get('label') or d['path']} at every start-up?")]
+        for uuid in chosen:
+            say(f"Opening drive {uuid}...")
+            r = subprocess.run(["pkexec", "/usr/lib/stoa/fpkg-helper", "mount-drive", uuid], capture_output=True, text=True)
+            if r.returncode and r.returncode != 126:
+                info((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else
+                     "That drive couldn't be opened.", "Couldn't open a drive")
+        devs = block_devices()
+
+    # 2. Look for Steam libraries on every opened drive (other than Stoa's own).
+    say("Looking for Steam games...")
+    known = {os.path.realpath(p) for p in steam_libraries()}
+    found = []
+    tops = sorted({d["mountpoint"] for d in devs if d.get("mountpoint") and d["mountpoint"] not in
+                   ("/", "/boot", "/boot/efi", "[SWAP]") and not d["mountpoint"].startswith(("/snap", "/var/snap"))})
+    for top in tops:
+        for lib in find_libraries(top):
+            if os.path.realpath(lib) not in known and os.path.realpath(lib) != root:
+                found.append(os.path.realpath(lib))
+    if not found:
+        info("Stoa didn't find any other Steam libraries.\n\nIf your games are on a drive that's switched off or "
+             "unplugged, connect it and run this again. You can also add a folder yourself in Steam: "
+             "Steam > Settings > Storage > Add drive.")
+        return
+    games = {lib: library_games(lib) for lib in found}
+    total = sum(len(g) for g in games.values())
+    listing = "\n".join(f"  {lib}  ({len(g)} game{'s' if len(g) != 1 else ''})" for lib, g in games.items())
+    if not ask(f"Found {total} installed game{'s' if total != 1 else ''} in:\n{listing}\n\nAdd them to Steam?"):
+        return
+
+    # 3. Steam must be closed while its library list changes.
+    if steam_running():
+        if not ask("Steam is open. Close it now so Stoa can add the games? (Downloads in progress pause.)"):
+            return
+        if flat:
+            subprocess.run(["flatpak", "kill", STEAM_FLATPAK], capture_output=True)
+        else:
+            subprocess.run(["steam", "-shutdown"], capture_output=True, timeout=30)
+        for _ in range(30):
+            if not steam_running():
+                break
+            time.sleep(1)
+        if steam_running():
+            fail("Steam didn't close. Quit it from its menu (Steam > Exit) and run this again.")
+
+    notes = []
+    for lib, g in games.items():
+        fs, mp = mount_fstype(lib)
+        if flat:  # let the Steam app see the drive
+            subprocess.run(["flatpak", "override", "--user", f"--filesystem={mp if mp not in ('/', '/home') else lib}",
+                            STEAM_FLATPAK], capture_output=True)
+        if fs in TEMP_FS:
+            # Proton keeps each Windows game's settings in compatdata, and Windows drives can't store them (the
+            # names have characters Windows doesn't allow). Keep that folder on Stoa's own drive instead.
+            compat = os.path.join(lib, "steamapps/compatdata")
+            if os.path.isdir(compat) and not os.path.islink(compat) and not os.listdir(compat):
+                os.rmdir(compat)
+            if not os.path.exists(compat):
+                target = os.path.join(root, "steamapps", "compatdata-other-drives",
+                                      re.sub(r"[^A-Za-z0-9]+", "-", lib).strip("-"))
+                os.makedirs(target, exist_ok=True)
+                try:
+                    os.symlink(target, compat)
+                except OSError:
+                    notes.append(f"{lib} is on a {fs} drive, which can't hold the settings Windows games need. "
+                                 "If a game won't start, move it to Stoa's drive in Steam > Properties > "
+                                 "Installed Files > Move install folder.")
+        for vdf in (os.path.join(root, "steamapps/libraryfolders.vdf"), os.path.join(root, "config/libraryfolders.vdf")):
+            if os.path.exists(vdf):
+                add_to_vdf(vdf, lib, g)
+        say(f"Added {lib}")
+    names = sorted({n for g in games.values() for n, _s in g.values()})
+    shown = ", ".join(names[:12]) + (f" and {len(names) - 12} more" if len(names) > 12 else "")
+    msg = (f"Done - {total} game{'s' if total != 1 else ''} added to Steam: {shown}.\n\n"
+           "Open Steam and they show as installed. The first time you press Play, Steam may check the files for a "
+           "minute instead of downloading them again.\n\nGames made for Windows need Proton: in Steam > Settings > "
+           "Compatibility, turn on \"Enable Steam Play for all other titles\". Games that have their own Linux "
+           "version may download that version once.")
+    if notes:
+        msg += "\n\n" + "\n".join(notes)
+    info(msg, "Steam games added")
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"):
@@ -263,6 +497,8 @@ def main():
         setup_jedi_academy()
     elif a[0] == "mod-organizer":
         setup_mod_organizer(a[1] if len(a) > 1 else None)
+    elif a[0] == "steam-drives":
+        setup_steam_drives()
     elif a[0] == "remove" and len(a) > 1:
         {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer}.get(
             a[1], lambda: fail(f"unknown set-up {a[1]}"))()
