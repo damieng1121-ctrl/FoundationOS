@@ -92,7 +92,26 @@ setup screen says which - except with Ollama, which runs on your own machine.
 | ChatGPT | `gpt-5` | platform.openai.com |
 | Gemini | `gemini-2.5-flash` | aistudio.google.com |
 | Ollama | `llama3.1` | no key - install Ollama, run `ollama pull llama3.1` |
+| OpenRouter | a free model, picked after sign-in | sign in - no key |
+| Hugging Face | picked after sign-in | sign in - no key (see below) |
 | Custom | you choose | any OpenAI-compatible endpoint (base URL + key) |
+
+**No API key? Sign in instead.** Two services officially let an app use your account through a normal
+browser sign-in (OAuth with PKCE - Stoa never sees your password, and the key it receives stays on this
+computer):
+
+- **OpenRouter** - one account for hundreds of models, including free open models (Llama, Qwen, DeepSeek,
+  gpt-oss, Mistral...). Sign in with Google, GitHub or email on OpenRouter's site; Stoa then picks a free
+  model that supports the tools Stoa AI uses. Revoke access any time at openrouter.ai → Keys.
+- **Hugging Face** - open models through Hugging Face's Inference Providers, billed to your Hugging Face
+  account's monthly allowance. Needs a one-time setup by whoever builds Stoa: create an OAuth app at
+  huggingface.co → Settings → Connected Apps (scopes `openid profile inference-api`, redirect URIs
+  `http://127.0.0.1:3000/callback`, `http://127.0.0.1:3001/callback`, `http://127.0.0.1:8765/callback`)
+  and put its public client id in `/etc/stoa/signin.json` as `{"huggingface": {"client_id": "..."}}`.
+
+ChatGPT, Claude.ai and Gemini subscriptions can't be used this way - those companies only allow other apps
+through API keys, so they're listed above with a key. Endpoints live in
+`overlay/usr/lib/stoa/assistant/signin.py` and can be overridden with `STOA_SIGNIN_<SERVICE>_<FIELD>`.
 
 Building apps needs a capable model; small local models can chat and run simple tools but may write
 weaker apps.

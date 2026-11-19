@@ -140,7 +140,8 @@ class Panel(Gtk.Window):
         box.pack_start(theme.css(Gtk.Label(label="Connect Stoa AI", xalign=0), "fs-h1"), False, False, 0)
         box.pack_start(theme.css(Gtk.Label(
             label="Choose the AI you'd like Stoa to use. Any of them can build apps, install software and "
-                  "change settings for you. Your key is stored only on this computer.",
+                  "change settings for you. Paste an API key, or sign in to OpenRouter or Hugging Face to use "
+                  "open models without one. Keys stay on this computer.",
             xalign=0, wrap=True, max_width_chars=46), "fs-muted"), False, False, 0)
 
         self.provider_combo = Gtk.ComboBoxText()
@@ -174,6 +175,8 @@ class Panel(Gtk.Window):
         row.pack_start(self.get_btn, False, False, 0)
         save = theme.css(Gtk.Button(label="Turn on Stoa AI"), "ai-approve")
         save.connect("clicked", self._save_key)
+        self.save_btn = save
+        self.signin_creds = None
         row.pack_end(save, False, False, 0)
         box.pack_start(row, False, False, 0)
         self.setup_err = theme.css(Gtk.Label(xalign=0, wrap=True, max_width_chars=46), "ai-error")
@@ -196,10 +199,35 @@ class Panel(Gtk.Window):
         self.model_combo.remove_all()
         self.model_combo.get_child().set_text(p["model"] if is_oai else "")
         self.setup_err.set_text("")
+        self.save_btn.set_sensitive(True)
+        self.signin_creds = None
+        if p.get("signin"):
+            import signin
+            from agent import load_config
+            cfg = load_config()
+            if cfg and cfg.get("provider") == pid and cfg.get("api_key"):
+                self.signin_creds = {k: cfg.get(k) for k in ("api_key", "refresh_token", "expires_at")}
+                self.model_combo.get_child().set_text(cfg.get("model", ""))
+            site = "OpenRouter" if pid == "openrouter" else "Hugging Face"
+            self.get_btn.set_visible(bool(self.signin_creds))
+            self.get_btn.set_label("Sign in again")
+            self.model_row.set_visible(bool(self.signin_creds))
+            self.save_btn.set_label("Save" if self.signin_creds else f"Sign in with {site}")
+            ok, why = signin.available(p["signin"])
+            if not ok:
+                self.save_btn.set_sensitive(False)
+                self.setup_err.set_text(why + " See the Stoa README to enable it.")
+            elif self.signin_creds:
+                self.setup_err.set_text(f"Signed in to {site}.")
+        else:
+            self.save_btn.set_label("Turn on Stoa AI")
 
     def _open_key_page(self):
         from agent import PROVIDERS
-        url = PROVIDERS[self.provider_combo.get_active_id() or "claude"]["key_url"]
+        p = PROVIDERS[self.provider_combo.get_active_id() or "claude"]
+        if p.get("signin"):
+            return self._sign_in()
+        url = p["key_url"]
         if url:
             Gio.AppInfo.launch_default_for_uri(url, None)
 
@@ -207,6 +235,8 @@ class Panel(Gtk.Window):
         from agent import list_models
         pid = self.provider_combo.get_active_id()
         key, url = self.key_entry.get_text().strip(), self.url_entry.get_text().strip()
+        if self.signin_creds:
+            key = self.signin_creds["api_key"]
         self.load_btn.set_sensitive(False)
         self.setup_err.set_text("Loading models…")
 
@@ -290,6 +320,18 @@ class Panel(Gtk.Window):
         key = self.key_entry.get_text().strip()
         model = self.model_combo.get_child().get_text().strip()
         url = self.url_entry.get_text().strip()
+        if p.get("signin"):
+            if not self.signin_creds:
+                return self._sign_in()
+            if not model:
+                self.setup_err.set_text("Choose a model - press 'Load models' to see what's available.")
+                return
+            c = self.signin_creds
+            save_config(pid, c["api_key"], model, "", c.get("refresh_token") or "", c.get("expires_at") or 0)
+            self.agent.reset()
+            for ch in self.list.get_children():
+                ch.destroy()
+            return self._enter()
         if p["needs_key"] and not key:
             self.setup_err.set_text("Paste your API key first.")
             return
@@ -308,6 +350,47 @@ class Panel(Gtk.Window):
         for c in self.list.get_children():
             c.destroy()
         self._enter()
+
+    def _sign_in(self):
+        """Browser sign-in (OAuth): the person signs in on the service's own site; no key to copy."""
+        import signin
+        from agent import PROVIDERS, pick_model, _models_json
+        pid = self.provider_combo.get_active_id()
+        p = PROVIDERS[pid]
+        site = "OpenRouter" if pid == "openrouter" else "Hugging Face"
+        self.save_btn.set_sensitive(False)
+        self.get_btn.set_sensitive(False)
+        self.setup_err.set_text(f"Sign in to {site} in your browser - you can use Google, GitHub or email "
+                                "there. Then come back here.")
+
+        def done(creds, err):
+            model, merr = "", None
+            if creds:
+                try:
+                    model = pick_model(pid, _models_json(pid, creds["api_key"]))
+                except Exception as e:  # noqa: BLE001
+                    merr = str(e)
+            GLib.idle_add(lambda: (finish(creds, err, model, merr), False)[1])
+
+        def finish(creds, err, model, merr):
+            self.save_btn.set_sensitive(True)
+            self.get_btn.set_sensitive(True)
+            if err:
+                self.setup_err.set_text(err)
+                return
+            self.signin_creds = creds
+            self.model_row.set_visible(True)
+            self.get_btn.set_visible(True)
+            self.get_btn.set_label("Sign in again")
+            self.save_btn.set_label("Save")
+            self.model_combo.get_child().set_text(model)
+            if merr or not model:
+                self.setup_err.set_text(f"Signed in to {site}. Press 'Load models' and choose one.")
+                return
+            self.setup_err.set_text(f"Signed in to {site}. Using {model}.")
+            self._save_key()
+
+        signin.sign_in_async(p["signin"], done)
 
     def _menu(self, btn):
         m = Gtk.Menu()

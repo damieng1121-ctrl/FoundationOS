@@ -7,6 +7,8 @@ The UI talks to Agent through callbacks; every callback is invoked from the work
 so the UI must hop back to the GTK main loop itself.
 """
 import json
+import urllib.request
+import time
 import os
 import re
 import shutil
@@ -37,6 +39,16 @@ PROVIDERS = {
                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "needs_key": True,
                "model": "gemini-2.5-flash", "key_hint": "AIza…", "key_url": "https://aistudio.google.com/apikey",
                "privacy": "What you type is sent to Google."},
+    "openrouter": {"label": "OpenRouter - sign in, free open models", "kind": "openai",
+                   "base_url": "https://openrouter.ai/api/v1", "needs_key": False, "signin": "openrouter",
+                   "model": "", "key_hint": "", "key_url": "",
+                   "privacy": "What you type is sent to OpenRouter and the model's provider. Sign in with "
+                              "Google, GitHub or email - no API key needed."},
+    "huggingface": {"label": "Hugging Face - sign in, open models", "kind": "openai",
+                    "base_url": "https://router.huggingface.co/v1", "needs_key": False, "signin": "huggingface",
+                    "model": "", "key_hint": "", "key_url": "",
+                    "privacy": "What you type is sent to Hugging Face and the model's provider. Uses your "
+                               "Hugging Face account's monthly allowance."},
     "ollama": {"label": "On this computer (Ollama)", "kind": "openai", "base_url": "http://localhost:11434/v1",
                "needs_key": False, "model": "llama3.1", "key_hint": "", "key_url": "https://ollama.com/download",
                "privacy": "Everything stays on this computer. Needs Ollama and a downloaded model."},
@@ -221,19 +233,57 @@ def load_config():
         return None
     cfg.setdefault("provider", "claude")  # configs from before providers existed
     prov = PROVIDERS.get(cfg["provider"])
-    if not prov or (prov["needs_key"] and not cfg.get("api_key")):
+    if not prov or ((prov["needs_key"] or prov.get("signin")) and not cfg.get("api_key")):
         return None
     if prov["kind"] == "openai" and not cfg.get("model"):
         return None
     return cfg
 
 
-def save_config(provider, api_key="", model="", base_url=""):
+def save_config(provider, api_key="", model="", base_url="", refresh_token="", expires_at=0):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     fd = os.open(CONFIG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump({"provider": provider, "api_key": api_key.strip(), "model": model.strip(),
-                   "base_url": base_url.strip()}, f)
+                   "base_url": base_url.strip(), "refresh_token": refresh_token, "expires_at": expires_at}, f)
+
+
+def fresh_credentials(cfg):
+    """For signed-in providers whose access tokens expire: refresh shortly before expiry and save."""
+    if not PROVIDERS[cfg["provider"]].get("signin") or not cfg.get("expires_at"):
+        return cfg
+    if cfg["expires_at"] - time.time() > 120:
+        return cfg
+    import signin
+    new = signin.refresh(PROVIDERS[cfg["provider"]]["signin"], cfg.get("refresh_token", ""))
+    save_config(cfg["provider"], new["api_key"], cfg.get("model", ""), cfg.get("base_url", ""),
+                new["refresh_token"], new["expires_at"])
+    return dict(cfg, **new)
+
+
+def _models_json(provider, api_key, base_url=""):
+    """The provider's raw /models list (keeps pricing and capability fields the SDK may drop)."""
+    url = (base_url or PROVIDERS[provider]["base_url"]).rstrip("/") + "/models"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}", "User-Agent": "Stoa-AI"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read()).get("data", [])
+
+
+def pick_model(provider, models):
+    """A sensible default: a free model that can use tools (OpenRouter), else a large instruct model."""
+    def can_use_tools(m):
+        sp = m.get("supported_parameters")
+        return sp is None or "tools" in sp
+    ids = [m["id"] for m in models if can_use_tools(m)] or [m["id"] for m in models]
+    if provider == "openrouter":
+        free = [i for i in ids if i.endswith(":free")]
+        ids = free or ids
+    prefer = ("gpt-oss-120b", "llama-3.3-70b", "qwen3", "deepseek", "llama-4", "mistral", "gemma")
+    for p in prefer:
+        for i in ids:
+            if p in i.lower():
+                return i
+    return ids[0] if ids else ""
 
 
 def openai_client(provider, api_key, base_url=""):
@@ -247,6 +297,13 @@ def list_models(provider, api_key, base_url=""):
     """Model ids the provider offers, for the setup screen (raises on auth/network errors)."""
     if PROVIDERS[provider]["kind"] == "anthropic":
         return [MODEL]
+    if PROVIDERS[provider].get("signin"):
+        models = _models_json(provider, api_key, base_url)
+        ids = [m["id"] for m in models if (m.get("supported_parameters") is None
+                                          or "tools" in m.get("supported_parameters", []))]
+        if provider == "openrouter":  # free ones first
+            ids.sort(key=lambda i: (not i.endswith(":free"), i))
+        return ids
     ids = sorted({m.id for m in openai_client(provider, api_key, base_url).models.list()})
     if provider == "openai":  # hide embeddings, audio, image and moderation models
         ids = [i for i in ids if re.match(r"^(gpt|o\d|chatgpt)", i) and not re.search(
@@ -286,6 +343,10 @@ class Agent:
             self.client = anthropic.Anthropic(api_key=cfg["api_key"], max_retries=3)
             self.model = MODEL
         else:
+            try:
+                cfg = fresh_credentials(cfg)
+            except Exception:  # noqa: BLE001 - shown as a sign-in prompt when the request fails
+                pass
             self.client = openai_client(provider, cfg.get("api_key", ""), cfg.get("base_url", ""))
             self.model = cfg["model"]
         return True
@@ -293,7 +354,7 @@ class Agent:
     def describe(self):
         if not self.provider:
             return ""
-        label = PROVIDERS[self.provider]["label"].split(" (")[0]
+        label = PROVIDERS[self.provider]["label"].split(" (")[0].split(" - ")[0]
         return label if self.provider == "claude" else f"{label} · {self.model}"
 
     def reset(self):
@@ -331,7 +392,9 @@ class Agent:
         try:
             self._loop_openai()
         except openai.AuthenticationError:
-            self.ui.on_error("That API key wasn't accepted. Open the menu (⋯) and choose 'Change AI provider'.")
+            self.ui.on_error("Your sign-in has expired. Open the menu (⋯), choose 'Change AI provider' and "
+                             "press 'Sign in again'." if PROVIDERS[self.provider].get("signin") else
+                             "That API key wasn't accepted. Open the menu (⋯) and choose 'Change AI provider'.")
         except openai.NotFoundError:
             self.ui.on_error(f"The model '{self.model}' wasn't found. Choose another in 'Change AI provider'.")
         except openai.RateLimitError:
