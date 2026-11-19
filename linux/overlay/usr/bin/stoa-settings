@@ -95,6 +95,7 @@ TILES = [
     ("Display", "video-display", "display"),
     ("Network & Wi-Fi", "network-wireless", ["nm-connection-editor"]),
     ("Sound", "audio-volume-high", ["pavucontrol"]),
+    ("Security", "security-high", ["stoa-protect"]),
     ("Bluetooth", "bluetooth", ["blueman-manager"]),
     ("Printers", "printer", ["system-config-printer"]),
     ("Scanner", "scanner", ["simple-scan"]),

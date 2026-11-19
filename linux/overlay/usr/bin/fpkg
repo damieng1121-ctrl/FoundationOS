@@ -298,6 +298,7 @@ def find_exes(bottle):
 
 def install_windows(installer, app_id=None, name=None, args=None, exec_path=None, verbs=(), arch="win64",
                     icon=None, version=None, portable=False, extra_state=None):
+    malware_check(installer)
     installer = os.path.abspath(installer)
     name = name or os.path.splitext(os.path.basename(installer))[0]
     app_id = app_id or slug(name)
@@ -490,9 +491,23 @@ def pack(args):
 
 # --------------------------------------------------------------- top level
 
+def malware_check(path):
+    """Scan a file with Stoa Protect before installing it; stop if it's malicious."""
+    if not have("stoa-protect"):
+        return
+    say(f"Checking {os.path.basename(path)} for viruses")
+    r = subprocess.run(["stoa-protect", "check", path], capture_output=True, text=True)
+    if r.returncode == 1:
+        die(r.stderr.strip() or f"{os.path.basename(path)} contains malware and was quarantined.")
+    if r.returncode == 3:
+        print(f"{C['y']}note:{C['0']} not virus-checked ({r.stderr.strip().removeprefix('warning: not scanned: ')})")
+
+
 def install_target(target, assume_yes=False):
     low = target.lower()
     if os.path.exists(target):
+        if not low.endswith((".exe", ".msi")):  # Windows installers are checked in install_windows
+            malware_check(target)
         if low.endswith(".fpkg"):
             return install_bundle(target)
         if low.endswith((".exe", ".msi")):

@@ -20,7 +20,8 @@ apt-get install -y --no-install-recommends \
   libsdl2-2.0-0 libopengl0 \
   cups cups-browsed cups-filters ipp-usb avahi-daemon libnss-mdns system-config-printer \
   printer-driver-gutenprint printer-driver-hpcups hplip printer-driver-brlaser printer-driver-splix \
-  printer-driver-foo2zjs printer-driver-c2esp printer-driver-ptouch openprinting-ppds simple-scan sane-airscan
+  printer-driver-foo2zjs printer-driver-c2esp printer-driver-ptouch openprinting-ppds simple-scan sane-airscan \
+  ufw apparmor apparmor-utils clamav clamav-freshclam inotify-tools cryptsetup cryptsetup-initramfs clevis clevis-luks clevis-tpm2 clevis-initramfs tpm2-tools
 
 # GRUB packages for the installer to put on the target (matching BIOS or UEFI firmware).
 rm -rf /var/cache/stoa/debs
@@ -97,8 +98,17 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT
 
+# --- Security
+# Firewall: block incoming, allow outgoing (ufw's defaults; mDNS for printers is allowed). Rules load at boot.
+sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf
+systemctl enable ufw.service apparmor.service
+# Antivirus signatures (~300 MB) download on installed systems only, not into the live session's RAM.
+mkdir -p /etc/systemd/system/clamav-freshclam.service.d
+printf '[Unit]\nConditionKernelCommandLine=!boot=casper\n' > /etc/systemd/system/clamav-freshclam.service.d/10-stoa-not-live.conf
+systemctl enable clamav-freshclam.service
+
 # --- Desktop integration
-chmod 0755 /usr/bin/fpkg /usr/bin/stoa-* /usr/lib/stoa/fpkg-helper \
+chmod 0755 /usr/bin/fpkg /usr/bin/stoa-* /usr/lib/stoa/fpkg-helper /usr/lib/stoa/security-helper \
   /usr/lib/stoa/install-bootloader-pkg /usr/lib/stoa/select-session /usr/lib/stoa/app-names /usr/lib/stoa/stoa-toplevels
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 /usr/lib/stoa/app-names

@@ -1,0 +1,516 @@
+#!/usr/bin/env python3
+"""Stoa Protect: antivirus, firewall and drive encryption in one place.
+
+  stoa-protect                 open the Security window
+  stoa-protect scan [PATH...]  scan files/folders (default: Downloads, Desktop, Documents)
+  stoa-protect check FILE      scan one file: exit 0 clean, 1 threat found (quarantined), 3 can't scan
+  stoa-protect watch           scan new downloads as they arrive (started at sign-in)
+
+Scanning uses ClamAV, whose signatures update automatically every day. Threats are moved to
+~/.local/share/stoa/quarantine, where you can restore or delete them.
+"""
+import datetime
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+HOME = os.path.expanduser("~")
+DATA = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local/share")
+QUAR = os.path.join(DATA, "stoa/quarantine")
+STATE = os.path.join(DATA, "stoa/protect.json")
+HELPER = "/usr/lib/stoa/security-helper"
+TPM_MARK = "/etc/stoa/tpm-unlock"  # written by security-helper when the TPM unlocks the drive
+SIG_DIR = "/var/lib/clamav"
+# File types worth scanning as they arrive: programs, installers, archives, scripts and macro documents.
+RISKY = re.compile(r"\.(exe|msi|dll|scr|com|bat|cmd|ps1|vbs|js|jar|lnk|deb|rpm|appimage|fpkg|sh|run|bin|"
+                   r"zip|rar|7z|tar|gz|xz|bz2|iso|cab|doc|docm|xls|xlsm|ppt|pptm|rtf|pdf|apk|hta)$", re.I)
+PARTIAL = re.compile(r"\.(crdownload|part|download|tmp)$", re.I)
+
+
+# ---------------------------------------------------------------- scanning
+
+def have_scanner():
+    return shutil.which("clamscan") is not None
+
+
+def signatures_date():
+    files = [f for pat in ("*.cvd", "*.cld", "*.hdb", "*.ndb", "*.ldb") for f in glob.glob(os.path.join(SIG_DIR, pat))]
+    if not files:
+        return None
+    return datetime.datetime.fromtimestamp(max(os.path.getmtime(f) for f in files))
+
+
+def load_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(**kw):
+    st = load_state()
+    st.update(kw)
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w") as f:
+        json.dump(st, f, indent=1)
+
+
+def notify(title, body, urgent=False):
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "-a", "Stoa Protect", "-i", "security-high",
+                        "-u", "critical" if urgent else "normal", title, body], capture_output=True)
+
+
+def quarantine(path, threat):
+    os.makedirs(QUAR, mode=0o700, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = os.path.join(QUAR, f"{stamp}-{os.path.basename(path)}.quarantined")
+    try:
+        shutil.move(path, dest)
+        os.chmod(dest, 0o000)
+    except OSError:
+        return None
+    with open(dest + ".json", "w") as f:
+        json.dump({"original": path, "threat": threat, "when": stamp}, f)
+    return dest
+
+
+def scan(paths, quiet=False):
+    """Scan paths; quarantine threats. Returns (list of (path, threat), error or None)."""
+    if not have_scanner():
+        return [], "The antivirus isn't installed (clamav)."
+    if not signatures_date():
+        return [], "Antivirus signatures haven't downloaded yet. Connect to the internet and wait a few minutes."
+    paths = [p for p in paths if os.path.exists(p)]
+    if not paths:
+        return [], None
+    cmd = ["clamscan", "--recursive", "--infected", "--no-summary", "--stdout",
+           "--exclude-dir=" + re.escape(QUAR), "--max-filesize=500M", "--max-scansize=1000M", *paths]
+    if not quiet:
+        print("Scanning " + ", ".join(paths) + " ...", flush=True)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 2 and "FOUND" not in r.stdout:
+        return [], (r.stderr.strip().splitlines() or ["scan failed"])[-1]
+    found = []
+    for line in r.stdout.splitlines():
+        m = re.match(r"^(.*): (.+) FOUND$", line)
+        if m:
+            found.append((m.group(1), m.group(2)))
+    for path, threat in found:
+        dest = quarantine(path, threat)
+        if not quiet:
+            print(f"THREAT  {path}\n        {threat} -> {'quarantined' if dest else 'could not move it!'}", flush=True)
+        notify("Threat removed" if dest else "Threat found",
+               f"{os.path.basename(path)} contained {threat}." +
+               (" It has been moved to quarantine." if dest else " Delete it now."), urgent=True)
+    save_state(last_scan=time.time(), last_scan_found=len(found))
+    return found, None
+
+
+def default_scan_paths():
+    """Downloads, Desktop and Documents (honouring renamed/translated folders in user-dirs.dirs)."""
+    dirs = {"DOWNLOAD": "Downloads", "DESKTOP": "Desktop", "DOCUMENTS": "Documents"}
+    try:
+        with open(os.path.join(HOME, ".config/user-dirs.dirs")) as f:
+            for k, v in re.findall(r'^XDG_(\w+)_DIR="([^"]*)"', f.read(), re.M):
+                if k in dirs:
+                    dirs[k] = v.replace("$HOME", HOME)
+    except OSError:
+        pass
+    out = []
+    for p in dirs.values():
+        p = p if os.path.isabs(p) else os.path.join(HOME, p)
+        if p != HOME and os.path.isdir(p):
+            out.append(p)
+    return out or [HOME]
+
+
+def watch():
+    """Scan risky files as they land in Downloads/Desktop (inotify; ignores half-finished downloads)."""
+    if not shutil.which("inotifywait") or not have_scanner():
+        return
+    dirs = default_scan_paths()[:2]
+    p = subprocess.Popen(["inotifywait", "-m", "-q", "-e", "close_write,moved_to", "--format", "%w%f", *dirs],
+                         stdout=subprocess.PIPE, text=True)
+    pending, lock = {}, threading.Lock()
+
+    def worker():
+        while True:
+            time.sleep(2)
+            with lock:
+                ready = [f for f, t in pending.items() if time.time() - t > 2]
+                for f in ready:
+                    pending.pop(f)
+            if ready and load_state().get("realtime", True):
+                scan([f for f in ready if os.path.isfile(f)], quiet=True)
+
+    threading.Thread(target=worker, daemon=True).start()
+    for line in p.stdout:
+        f = line.rstrip("\n")
+        if RISKY.search(f) and not PARTIAL.search(f):
+            with lock:
+                pending[f] = time.time()
+
+
+# ---------------------------------------------------------------- system status
+
+def firewall_on():
+    try:
+        with open("/etc/ufw/ufw.conf") as f:
+            return bool(re.search(r"^ENABLED=yes", f.read(), re.M))
+    except OSError:
+        return False
+
+
+def encryption_status():
+    """(encrypted, tpm_enrolled)."""
+    src = subprocess.run(["findmnt", "-no", "SOURCE", "/"], capture_output=True, text=True).stdout.strip()
+    if not src.startswith("/dev/mapper/"):
+        return False, False
+    return True, os.path.exists(TPM_MARK)
+
+
+def root_helper(*args, stdin=None):
+    cmd = ["pkexec", HELPER, *args] if shutil.which("pkexec") else ["sudo", HELPER, *args]
+    return subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+
+
+# ---------------------------------------------------------------- window
+
+def window():
+    sys.path.insert(0, "/usr/lib/stoa")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+    import stoa_ui as ui
+
+    ui.apply_css()
+    win = Gtk.Window(title="Stoa Protect")
+    win.set_default_size(*ui.fit_size(620, 640))
+    win.set_icon_name("security-high")
+    win.connect("destroy", Gtk.main_quit)
+    sw = Gtk.ScrolledWindow()
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    win.add(sw)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    box.set_border_width(18)
+    sw.add(box)
+
+    head = Gtk.Box(spacing=12)
+    icon = Gtk.Image.new_from_icon_name("security-high", Gtk.IconSize.DIALOG)
+    icon.set_pixel_size(48)
+    head.pack_start(icon, False, False, 0)
+    hv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    hv.pack_start(ui.css(Gtk.Label(label="Stoa Protect", xalign=0), "f-title"), False, False, 0)
+    summary = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+    hv.pack_start(summary, False, False, 0)
+    head.pack_start(hv, True, True, 0)
+    box.pack_start(head, False, False, 0)
+
+    def card(title, desc):
+        c = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8), "f-card")
+        row = Gtk.Box(spacing=10)
+        tv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        tv.pack_start(ui.css(Gtk.Label(label=title, xalign=0), "f-h2"), False, False, 0)
+        d = ui.css(Gtk.Label(label=desc, xalign=0, wrap=True), "f-muted")
+        d.set_max_width_chars(48)
+        tv.pack_start(d, False, False, 0)
+        row.pack_start(tv, True, True, 0)
+        c.pack_start(row, False, False, 0)
+        box.pack_start(c, False, False, 0)
+        return c, row, d
+
+    def say_error(msg):
+        dlg = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR,
+                                buttons=Gtk.ButtonsType.OK, text=msg)
+        dlg.run()
+        dlg.destroy()
+
+    # --- Antivirus
+    av, av_row, av_desc = card("Virus & malware protection", "")
+    rt = Gtk.Switch(valign=Gtk.Align.CENTER, active=load_state().get("realtime", True))
+    rt.set_tooltip_text("Scan programs, installers, archives and documents as soon as they're downloaded")
+    rt.connect("notify::active", lambda s, _p: save_state(realtime=s.get_active()))
+    av_row.pack_start(rt, False, False, 0)
+    btns = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, column_spacing=8, row_spacing=8,
+                       max_children_per_line=4, homogeneous=False)
+    quick = ui.css(Gtk.Button(label="Quick scan"), "f-primary")
+    full = ui.css(Gtk.Button(label="Scan everything in my folders"), "f-ghost")
+    pick = ui.css(Gtk.Button(label="Scan a file or folder…"), "f-ghost")
+    upd = ui.css(Gtk.Button(label="Update now"), "f-ghost")
+    for b in (quick, full, pick, upd):
+        btns.add(b)
+    av.pack_start(btns, False, False, 0)
+    progress = Gtk.ProgressBar(no_show_all=True)
+    av.pack_start(progress, False, False, 0)
+    qlabel = ui.css(Gtk.Label(xalign=0), "f-muted")
+    av.pack_start(qlabel, False, False, 0)
+    qbtn = ui.css(Gtk.Button(label="Quarantine…", halign=Gtk.Align.START), "f-ghost")
+    av.pack_start(qbtn, False, False, 0)
+
+    # --- Firewall
+    fw, fw_row, fw_desc = card("Firewall", "")
+    fw_sw = Gtk.Switch(valign=Gtk.Align.CENTER)
+    fw_row.pack_start(fw_sw, False, False, 0)
+
+    # --- Encryption
+    enc, enc_row, enc_desc = card("Drive encryption", "")
+    tpm_btn = ui.css(Gtk.Button(halign=Gtk.Align.START, no_show_all=True), "f-ghost")
+    enc.pack_start(tpm_btn, False, False, 0)
+
+    # --- Always on
+    card("Always on", "Security updates install automatically • Apps are confined by AppArmor • Store apps "
+                      "run in a sandbox • Apps built by Stoa AI can't read your files")
+
+    busy = {"on": False}
+
+    def refresh():
+        sig = signatures_date()
+        st = load_state()
+        n = len(glob.glob(os.path.join(QUAR, "*.quarantined")))
+        if not have_scanner():
+            av_desc.set_text("The antivirus isn't installed. Run the latest Stoa update.")
+        elif not sig:
+            av_desc.set_text("Downloading virus signatures - this happens automatically once you're online.")
+        else:
+            last = st.get("last_scan")
+            av_desc.set_text("Downloads are checked as they arrive." if rt.get_active() else
+                             "Automatic download scanning is off.")
+            av_desc.set_text(av_desc.get_text() + f"\nSignatures updated {sig:%d %b %Y %H:%M}." +
+                             (f" Last scan {datetime.datetime.fromtimestamp(last):%d %b %H:%M}"
+                              f" - {st.get('last_scan_found', 0) or 'no'} threats found." if last else ""))
+        qlabel.set_text(f"{n} item{'s' if n != 1 else ''} in quarantine." if n else "Nothing in quarantine.")
+        qbtn.set_visible(bool(n))
+        on = firewall_on()
+        fw_sw.handler_block_by_func(fw_toggled)
+        fw_sw.set_active(on)
+        fw_sw.handler_unblock_by_func(fw_toggled)
+        fw_desc.set_text("On - other computers can't connect to this one. Printers, sharing and everything "
+                         "you open still work." if on else "Off - turn it on to block incoming connections.")
+        encrypted, tpm = encryption_status()
+        if not encrypted:
+            enc_desc.set_text("Off. Your files are readable if someone removes the drive. Encryption is "
+                              "chosen when installing Stoa (\"Encrypt system\").")
+            tpm_btn.hide()
+        else:
+            has_tpm = os.path.exists("/dev/tpmrm0")
+            enc_desc.set_text("On - your files can't be read without your password." +
+                              (" The TPM unlocks it automatically on this PC; your password is the backup."
+                               if tpm else (" You type the password when the PC starts." +
+                                            ("" if has_tpm else " (No TPM chip found for automatic unlock.)"))))
+            tpm_btn.set_label("Ask for the password again" if tpm else "Unlock automatically with the TPM…")
+            tpm_btn.set_visible(tpm or has_tpm)
+        ok = (not have_scanner() or sig) and on
+        summary.set_text("Your PC is protected." if ok and encrypted else
+                         "Your PC is protected. Drive encryption is off." if ok else "Action needed - see below.")
+
+    def fw_toggled(sw, _p):
+        r = root_helper("firewall", "on" if sw.get_active() else "off")
+        if r.returncode:
+            say_error("Couldn't change the firewall.\n" + (r.stderr.strip() or ""))
+        refresh()
+
+    fw_sw.connect("notify::active", fw_toggled)
+
+    def run_scan(paths):
+        if busy["on"]:
+            return
+        busy["on"] = True
+        for b in (quick, full, pick):
+            b.set_sensitive(False)
+        progress.show()
+        progress.set_text("Scanning…")
+        progress.set_show_text(True)
+        tick = GLib.timeout_add(120, lambda: progress.pulse() or True)
+
+        def work():
+            found, err = scan(paths, quiet=True)
+            GLib.idle_add(done, found, err)
+
+        def done(found, err):
+            GLib.source_remove(tick)
+            progress.hide()
+            busy["on"] = False
+            for b in (quick, full, pick):
+                b.set_sensitive(True)
+            refresh()
+            if err:
+                say_error(err)
+            else:
+                dlg = Gtk.MessageDialog(transient_for=win, modal=True, buttons=Gtk.ButtonsType.OK,
+                                        message_type=Gtk.MessageType.WARNING if found else Gtk.MessageType.INFO,
+                                        text=(f"{len(found)} threat{'s' if len(found) != 1 else ''} found and "
+                                              "quarantined." if found else "No threats found."))
+                if found:
+                    dlg.format_secondary_text("\n".join(f"{os.path.basename(p)}: {t}" for p, t in found[:8]))
+                dlg.run()
+                dlg.destroy()
+
+        threading.Thread(target=work, daemon=True).start()
+
+    quick.connect("clicked", lambda *_: run_scan(default_scan_paths()))
+    full.connect("clicked", lambda *_: run_scan([HOME]))
+
+    def choose(*_):
+        dlg = Gtk.FileChooserDialog(title="Scan", transient_for=win, action=Gtk.FileChooserAction.OPEN)
+        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Scan", Gtk.ResponseType.OK)
+        dlg.set_select_multiple(True)
+        if dlg.run() == Gtk.ResponseType.OK:
+            paths = dlg.get_filenames()
+            dlg.destroy()
+            run_scan(paths)
+        else:
+            dlg.destroy()
+
+    pick.connect("clicked", choose)
+
+    def update_sigs(*_):
+        upd.set_sensitive(False)
+        upd.set_label("Updating…")
+
+        def work():
+            r = root_helper("update-signatures")
+            GLib.idle_add(done, r)
+
+        def done(r):
+            upd.set_sensitive(True)
+            upd.set_label("Update now")
+            if r.returncode and r.returncode != 126:
+                say_error("Couldn't update the signatures. Check the internet connection.")
+            refresh()
+
+        threading.Thread(target=work, daemon=True).start()
+
+    upd.connect("clicked", update_sigs)
+
+    def show_quarantine(*_):
+        dlg = Gtk.Dialog(title="Quarantine", transient_for=win, modal=True)
+        dlg.set_default_size(560, 360)
+        area = dlg.get_content_area()
+        area.set_border_width(12)
+        area.set_spacing(8)
+        lb = Gtk.ListBox()
+        items = sorted(glob.glob(os.path.join(QUAR, "*.quarantined")), reverse=True)
+        for q in items:
+            try:
+                with open(q + ".json") as f:
+                    meta = json.load(f)
+            except (OSError, ValueError):
+                meta = {"original": q, "threat": "unknown"}
+            row = Gtk.Box(spacing=8)
+            row.set_border_width(6)
+            row.pack_start(Gtk.Label(label=f"{os.path.basename(meta['original'])}\n{meta['threat']}",
+                                     xalign=0), True, True, 0)
+
+            def restore(_b, q=q, meta=meta):
+                os.chmod(q, 0o600)
+                shutil.move(q, meta["original"])
+                os.remove(q + ".json")
+                dlg.response(0)
+
+            def delete(_b, q=q):
+                os.chmod(q, 0o600)
+                os.remove(q)
+                os.remove(q + ".json")
+                dlg.response(0)
+
+            r_b = ui.css(Gtk.Button(label="Restore"), "f-ghost")
+            r_b.set_tooltip_text("Only if you're sure it's safe - this puts the file back where it was")
+            r_b.connect("clicked", restore)
+            d_b = ui.css(Gtk.Button(label="Delete"), "f-danger")
+            d_b.connect("clicked", delete)
+            row.pack_start(r_b, False, False, 0)
+            row.pack_start(d_b, False, False, 0)
+            lb.add(row)
+        s = Gtk.ScrolledWindow(vexpand=True)
+        s.add(lb)
+        area.pack_start(s, True, True, 0)
+        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+        dlg.show_all()
+        dlg.run()
+        dlg.destroy()
+        refresh()
+
+    qbtn.connect("clicked", show_quarantine)
+
+    def tpm_clicked(*_):
+        _, tpm = encryption_status()
+        if tpm:
+            r = root_helper("tpm-remove")
+        else:
+            d = Gtk.Dialog(title="Unlock with the TPM", transient_for=win, modal=True)
+            a = d.get_content_area()
+            a.set_border_width(14)
+            a.set_spacing(10)
+            msg = Gtk.Label(wrap=True, xalign=0, label=(
+                "Your PC's TPM security chip will unlock the drive at start-up, so you won't type the "
+                "disk password. It only does this on this PC with its start-up settings unchanged - if the "
+                "drive is moved to another computer, it stays locked.\n\nYour disk password keeps working "
+                "as the backup: keep it somewhere safe.\n\nEnter the disk password to confirm:"))
+            msg.set_max_width_chars(56)
+            a.pack_start(msg, False, False, 0)
+            e = Gtk.Entry(visibility=False, activates_default=True)
+            a.pack_start(e, False, False, 0)
+            d.add_button("Cancel", Gtk.ResponseType.CANCEL)
+            ok = d.add_button("Turn on", Gtk.ResponseType.OK)
+            ok.get_style_context().add_class("f-primary")
+            d.set_default_response(Gtk.ResponseType.OK)
+            d.show_all()
+            resp, pw = d.run(), e.get_text()
+            d.destroy()
+            if resp != Gtk.ResponseType.OK or not pw:
+                return
+            r = root_helper("tpm-enroll", stdin=pw + "\n")
+        if r.returncode and r.returncode != 126:
+            say_error((r.stderr or r.stdout).strip() or "That didn't work.")
+        elif r.returncode == 0:
+            info = Gtk.MessageDialog(transient_for=win, modal=True, buttons=Gtk.ButtonsType.OK,
+                                     text=r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "Done.")
+            info.run()
+            info.destroy()
+        refresh()
+
+    tpm_btn.connect("clicked", tpm_clicked)
+    refresh()
+    win.show_all()
+    progress.hide()
+    refresh()
+    GLib.timeout_add_seconds(10, lambda: refresh() or True)
+    Gtk.main()
+
+
+def main():
+    a = sys.argv[1:]
+    if not a:
+        window()
+    elif a[0] in ("-h", "--help"):
+        print(__doc__)
+    elif a[0] == "scan":
+        found, err = scan(a[1:] or default_scan_paths())
+        if err:
+            sys.exit(f"error: {err}")
+        print(f"{len(found)} threat(s) found." if found else "No threats found.")
+        sys.exit(1 if found else 0)
+    elif a[0] == "check" and len(a) == 2:
+        found, err = scan([a[1]], quiet=True)
+        if err:
+            print(f"warning: not scanned: {err}", file=sys.stderr)
+            sys.exit(3)
+        if found:
+            print(f"Blocked: {os.path.basename(a[1])} contains {found[0][1]} and was quarantined.", file=sys.stderr)
+        sys.exit(1 if found else 0)
+    elif a[0] == "watch":
+        watch()
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

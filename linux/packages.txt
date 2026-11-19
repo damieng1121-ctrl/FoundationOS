@@ -106,6 +106,20 @@ printer-driver-ptouch
 openprinting-ppds
 simple-scan
 sane-airscan
+# Security: firewall, app confinement, antivirus, drive encryption with TPM unlock
+ufw
+apparmor
+apparmor-utils
+clamav
+clamav-freshclam
+inotify-tools
+cryptsetup
+cryptsetup-initramfs
+clevis
+clevis-luks
+clevis-tpm2
+clevis-initramfs
+tpm2-tools
 # Stoa AI: runtime for apps it builds
 gir1.2-webkit2-4.1
 

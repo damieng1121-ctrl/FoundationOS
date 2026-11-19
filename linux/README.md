@@ -156,6 +156,25 @@ drivers. Scanning: **Settings → Scanner** (Simple Scan), including network sca
 A few printers (some Canon and Epson models, Brother label printers) need the manufacturer's Linux driver
 `.deb` - double-click it or `stoa install ./driver.deb`.
 
+## Security
+
+No system is unhackable, but Stoa is built in layers, and **Stoa Protect** (Settings → Security, or the
+Stoa menu) shows them in one place:
+
+| Layer | What it does |
+|---|---|
+| **Antivirus** (ClamAV) | Scans programs, installers, archives, scripts and macro documents as they arrive in Downloads/Desktop, and every file before `stoa install`/the Store installs it (.exe, .msi, .deb, AppImage, .fpkg). Threats go to quarantine (restore or delete). Quick and full scans on demand. Signatures update daily. Especially useful because Stoa can run Windows programs, and ClamAV knows Windows malware well. |
+| **Firewall** (ufw) | On by default: nothing on the network can connect in; everything you open works, and printer discovery is allowed. |
+| **Drive encryption** (LUKS2) | Tick **Encrypt system** in the installer. Everything except a small `/boot` (kernel and start-up files, no personal data) is encrypted; the PC asks for the password once at start-up. A stolen laptop's files are unreadable. |
+| **TPM unlock** | On an encrypted install, Stoa Protect → *Unlock automatically with the TPM*: the TPM chip releases the key only on this PC with its firmware/Secure Boot settings unchanged (PCR 7, via Clevis), so the drive stays locked if moved to another computer. Kernel updates don't affect it. The password always works as the backup. |
+| **Always on** | Automatic security updates, AppArmor app confinement, Flatpak sandboxing for Store apps, sandboxed Stoa AI apps. |
+
+Honest limits: TPM-only unlock protects a stolen *drive*, but someone with the whole powered-off PC can boot
+it to the login screen (the Stoa password then protects your account); for the highest protection keep
+typing the disk password. ClamAV is signature-based - it catches known malware, not every brand-new threat,
+so the usual care with unknown downloads and links still matters. Encryption has to be chosen at install
+time; an existing install can't be encrypted in place.
+
 ## Updating Stoa without reinstalling
 
 Every push builds **`stoa-update`** (GitHub → Actions → *Build Stoa ISO* → the run → Artifacts), a small

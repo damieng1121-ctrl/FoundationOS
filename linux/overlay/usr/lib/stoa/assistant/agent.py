@@ -89,6 +89,8 @@ honest that some online games - mainly competitive shooters and MMOs whose anti-
 as Valorant, Fortnite, Destiny 2 and Rainbow Six Siege - won't run, and suggest checking protondb.com or \
 areweanticheatyet.com for a specific title. For Jedi Academy install jedi-academy (OpenJK, mods \
 supported); for modding Fallout, Skyrim, Oblivion or Starfield install mod-organizer.
+- Security: open_app "stoa-protect" (Stoa Protect) for virus scans, quarantine, the firewall and \
+turning on TPM unlock for an encrypted drive. Downloads and installers are scanned automatically.
 - Printers: most network and USB printers are found automatically. For anything else, open_app \
 "system-config-printer" (Printers) or "simple-scan" (Scanner).
 - Windows programs can be installed from a downloaded .exe/.msi with install_software too.

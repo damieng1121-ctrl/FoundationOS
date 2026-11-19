@@ -59,7 +59,7 @@ find "$STAGE/usr/lib/stoa/vendor" -name "__pycache__" -prune -exec rm -rf {} +
 
 chmod 0755 "$STAGE"/usr/bin/fpkg "$STAGE"/usr/bin/stoa-* "$STAGE"/usr/lib/stoa/fpkg-helper \
   "$STAGE"/usr/lib/stoa/install-bootloader-pkg "$STAGE"/usr/lib/stoa/select-session \
-  "$STAGE"/usr/lib/stoa/app-names
+  "$STAGE"/usr/lib/stoa/app-names "$STAGE"/usr/lib/stoa/security-helper
 [[ -d "$STAGE/etc/sudoers.d" ]] && find "$STAGE/etc/sudoers.d" -type f -exec chmod 0440 {} +
 
 mkdir -p "$STAGE/DEBIAN"
@@ -76,7 +76,8 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  ubuntu-drivers-common, libsdl2-2.0-0, libopengl0, cups, cups-browsed, cups-filters, ipp-usb,
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
- printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds
+ printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
+ ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings
@@ -105,6 +106,12 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 update-mime-database /usr/share/mime 2>/dev/null || true
 dconf update 2>/dev/null || true
+# Security defaults, once: firewall on (incoming blocked), daily virus signature updates.
+if [ ! -e /var/lib/stoa/security-defaults ]; then
+  ufw --force enable >/dev/null 2>&1 || true
+  systemctl enable --now clamav-freshclam.service >/dev/null 2>&1 || true
+  mkdir -p /var/lib/stoa && touch /var/lib/stoa/security-defaults
+fi
 glib-compile-schemas /usr/share/glib-2.0/schemas 2>/dev/null || true
 echo
 echo "Stoa is updated to $(cat /usr/share/stoa/VERSION). Sign out and back in to use the new version."

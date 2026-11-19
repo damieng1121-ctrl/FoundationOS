@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Stoa Protect
+GenericName=Security
+Comment=Antivirus, firewall and drive encryption
+Exec=stoa-protect
+Icon=security-high
+Categories=System;Security;Settings;
+Keywords=antivirus;virus;malware;firewall;security;encryption;tpm;bitlocker;defender;

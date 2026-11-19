@@ -7,4 +7,6 @@ stoa-display-follow >/dev/null 2>&1 &
 mako >/dev/null 2>&1 &
 lxpolkit >/dev/null 2>&1 &
 command -v spice-vdagent >/dev/null && spice-vdagent >/dev/null 2>&1 &
+# Stoa Protect: scan new downloads for viruses as they arrive.
+stoa-protect watch >/dev/null 2>&1 &
 stoa-welcome --autostart >/dev/null 2>&1 &
