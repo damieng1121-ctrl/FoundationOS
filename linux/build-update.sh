@@ -77,7 +77,7 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
  printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
- ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
+ systemd-zram-generator, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings
@@ -106,6 +106,19 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 update-mime-database /usr/share/mime 2>/dev/null || true
 dconf update 2>/dev/null || true
+# Stoa start-up screen (Plymouth): set it up once the spinner theme's images are available.
+if [ -d /usr/share/plymouth/themes/spinner ] && [ -f /usr/share/plymouth/themes/stoa/stoa.plymouth ]; then
+  for f in /usr/share/plymouth/themes/spinner/*.png; do
+    case "$(basename "$f")" in bgrt-fallback.png|watermark.png) ;; *) cp -n "$f" /usr/share/plymouth/themes/stoa/ ;; esac
+  done
+  if [ "$(readlink -f /etc/alternatives/default.plymouth 2>/dev/null)" != /usr/share/plymouth/themes/stoa/stoa.plymouth ]; then
+    update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
+      /usr/share/plymouth/themes/stoa/stoa.plymouth 200 >/dev/null
+    update-alternatives --set default.plymouth /usr/share/plymouth/themes/stoa/stoa.plymouth >/dev/null
+    update-initramfs -u >/dev/null 2>&1 || true
+  fi
+fi
+sysctl --system >/dev/null 2>&1 || true
 # Security defaults, once: firewall on (incoming blocked), daily virus signature updates.
 if [ ! -e /var/lib/stoa/security-defaults ]; then
   ufw --force enable >/dev/null 2>&1 || true

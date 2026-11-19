@@ -1,12 +1,12 @@
 name: Build Stoa kernel
 
-# Rebuilds the Stoa kernel from Ubuntu 24.04's security-maintained kernel source.
+# Rebuilds the Stoa kernel from Ubuntu 24.04's security-maintained hardware-enablement (HWE) kernel source.
 # Runs weekly so security fixes reach Stoa, and whenever kernel/ changes.
 on:
   workflow_dispatch:
     inputs:
       ubuntu_version:
-        description: "Ubuntu linux source version (e.g. 6.8.0-149.149); empty = latest"
+        description: "Ubuntu source version (e.g. 7.0.0-43.43~24.04.1); empty = latest"
         required: false
       force:
         description: "Rebuild even if a release for this version exists"
@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 330
     env:
       GH_TOKEN: ${{ github.token }}
+      SRC_PKG: linux-hwe-7.0   # Ubuntu's newest kernel for 24.04 (from 26.04 LTS)
     steps:
       - uses: actions/checkout@v4
 
@@ -44,10 +45,12 @@ jobs:
         id: ver
         run: |
           v="${{ github.event.inputs.ubuntu_version }}"
-          [ -n "$v" ] || v="$(apt-cache showsrc linux | sed -n 's/^Version: //p' | sort -V | tail -1)"
+          [ -n "$v" ] || v="$(apt-cache showsrc "$SRC_PKG" | sed -n 's/^Version: //p' | sort -V | tail -1)"
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          tag="kernel-$(echo "$v" | tr '~' '-')"   # git tags can't contain '~'
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if [ "${{ github.event.inputs.force }}" != "true" ] && [ "${{ github.event_name }}" != "push" ] \
-             && gh release view "kernel-$v" >/dev/null 2>&1; then
+             && gh release view "$tag" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Stoa kernel for $v already released - nothing to do."
           fi
@@ -78,8 +81,8 @@ jobs:
       - name: Publish release
         if: steps.ver.outputs.skip != 'true'
         run: |
-          tag="kernel-${{ steps.ver.outputs.version }}"
+          tag="${{ steps.ver.outputs.tag }}"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$tag" kernel/out/*.deb kernel/out/SHA256SUMS --target "$GITHUB_SHA" \
             --title "Stoa kernel ${{ steps.ver.outputs.version }}" \
-            --notes "Stoa kernel built from Ubuntu linux ${{ steps.ver.outputs.version }} with kernel/stoa.config."
+            --notes "Stoa kernel built from Ubuntu $SRC_PKG ${{ steps.ver.outputs.version }} with kernel/stoa.config."

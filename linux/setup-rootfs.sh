@@ -16,6 +16,7 @@ apt-get install -y --no-install-recommends \
   xserver-xorg-video-vesa xserver-xorg-video-vmware xserver-xorg-video-qxl \
   systemd-resolved x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
   gir1.2-webkit2-4.1 \
+  systemd-zram-generator \
   mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 vulkan-tools gamemode ubuntu-drivers-common \
   libsdl2-2.0-0 libopengl0 \
   cups cups-browsed cups-filters ipp-usb avahi-daemon libnss-mdns system-config-printer \
@@ -123,11 +124,15 @@ for f in wine.desktop display-im6.q16.desktop; do
   [ -f /usr/share/applications/$f ] && echo "NoDisplay=true" >> /usr/share/applications/$f || true
 done
 
-# Boot splash: replace the Ubuntu watermark with the Stoa logo.
+# Boot splash: Stoa's own Plymouth theme (also used for the disk-password prompt). It reuses the spinner
+# theme's animation frames and dialog images, adds the Stoa emblem, and never shows the firmware logo.
 if [ -d /usr/share/plymouth/themes/spinner ]; then
-  # Centre logo (shown when the firmware has no BGRT logo, e.g. in VMs) = Stoa; no bottom watermark.
-  cp /usr/share/stoa/logo-white.png /usr/share/plymouth/themes/spinner/bgrt-fallback.png
-  python3 -c "import zlib,struct;raw=b'\\x00\\x00\\x00\\x00\\x00';c=lambda t,d:struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d));open('/usr/share/plymouth/themes/spinner/watermark.png','wb').write(b'\\x89PNG\\r\\n\\x1a\\n'+c(b'IHDR',struct.pack('>IIBBBBB',1,1,8,6,0,0,0))+c(b'IDAT',zlib.compress(raw))+c(b'IEND',b''))"
+  T=/usr/share/plymouth/themes/stoa
+  for f in /usr/share/plymouth/themes/spinner/*.png; do
+    case "$(basename "$f")" in bgrt-fallback.png|watermark.png) ;; *) cp -n "$f" "$T/" ;; esac
+  done
+  update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$T/stoa.plymouth" 200
+  update-alternatives --set default.plymouth "$T/stoa.plymouth"
   cp /usr/share/stoa/logo-white.png /usr/share/plymouth/ubuntu-logo.png 2>/dev/null || true
 fi
 

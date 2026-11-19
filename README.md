@@ -12,7 +12,7 @@ Stoa has three tracks:
 | Track | What it is | Status |
 |---|---|---|
 | **[Stoa](linux/)** (`linux/`) | The everyday OS: Stoa desktop, store, package manager and installer on the Linux kernel (Ubuntu 24.04 LTS base). Runs Chrome, Microsoft 365, Google Drive, Flatpak apps and Windows `.exe`/`.msi` programs. | v0.2, installable ISO |
-| **[Stoa kernel](kernel/)** (`kernel/`) | Stoa's own Linux kernel build: desktop-tuned (full preemption, 1000 Hz), Stoa identity and boot logo, rebuilt weekly from Ubuntu's security-maintained source. | Default kernel of Stoa |
+| **[Stoa kernel](kernel/)** (`kernel/`) | Stoa's own Linux 7.0 build: desktop-tuned (full preemption, 1000 Hz, NTSYNC for Windows games, MGLRU, BBR), Stoa identity and boot screen, rebuilt weekly from Ubuntu's security-maintained HWE source. | Default kernel of Stoa |
 | **[Research kernel](research/)** (`research/`) | A from-scratch x86_64 kernel and GUI written in Rust - our own kernel, drivers, filesystem, network stack, window manager and apps. | v0.2, boots in QEMU (BIOS + UEFI) |
 
 ## Stoa (installable)

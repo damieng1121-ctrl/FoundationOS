@@ -106,6 +106,8 @@ printer-driver-ptouch
 openprinting-ppds
 simple-scan
 sane-airscan
+# Performance: compressed swap in RAM
+systemd-zram-generator
 # Security: firewall, app confinement, antivirus, drive encryption with TPM unlock
 ufw
 apparmor

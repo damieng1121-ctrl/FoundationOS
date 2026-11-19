@@ -1,26 +1,34 @@
 # Stoa kernel
 
-Stoa boots its own kernel: **Linux, built by Stoa** from Ubuntu 24.04's security-maintained
-kernel source, with Stoa's configuration, identity and boot logo.
+Stoa boots its own kernel: **Linux 7.0, built by Stoa** from Ubuntu's security-maintained hardware-enablement
+(HWE) kernel source for 24.04 - the kernel of Ubuntu 26.04 LTS - with Stoa's configuration, identity and
+boot logo.
 
 ```
 $ uname -r
-6.8.12-149-stoa
+7.0.0-43-stoa
 ```
 
 ## What's different from Ubuntu's kernel
 
 | | Stoa | Why |
 |---|---|---|
+| Version | 7.0 (Ubuntu 24.04 ships 6.8) | Newer GPUs (Intel Xe/Arc, AMD RDNA 4), Wi-Fi 7, recent laptops and power management |
 | Preemption | Full (`CONFIG_PREEMPT=y`) | The desktop stays responsive under heavy load |
+| NTSYNC | Built in (`/dev/ntsync`) | Windows' synchronisation primitives in the kernel: Wine and Proton games run faster and smoother |
+| Memory | Multi-generational LRU on, zram swap (zstd) | Old PCs with 4-8 GB stay responsive when memory is tight |
+| Network | BBR + fq by default | Faster, steadier downloads, streaming and video calls |
 | Timer | 1000 Hz | Smoother input, audio and animations |
 | Debug info | None | Smaller packages, faster boots and builds |
 | Module signing | Stoa's own build key | Ubuntu's certificates aren't ours |
 | Boot logo | Stoa emblem | Shown on the console during verbose boots |
 | Identity | `-stoa` release name, built by `stoa@stoa-os` | It's our kernel |
 
-Everything else comes from Ubuntu's generic configuration, so hardware support is the same: Wi-Fi, GPUs,
-VirtualBox/VMware/Hyper-V/QEMU guests, laptops, USB devices.
+Everything else comes from Ubuntu's generic configuration for that kernel, so hardware support matches
+Ubuntu 26.04: Wi-Fi, GPUs, VirtualBox/VMware/Hyper-V/QEMU guests, laptops, USB devices. Rust-written drivers
+are left out (they need a matching Rust toolchain at build time). The OS side adds zram swap
+(`/etc/systemd/zram-generator.conf`), matching `sysctl` settings and the Stoa boot screen (Plymouth theme
+`stoa`, also used for the disk-encryption prompt).
 
 The full configuration change is [`stoa.config`](stoa.config); edit it to tune the kernel.
 
@@ -30,9 +38,10 @@ The full configuration change is [`stoa.config`](stoa.config); edit it to tune t
   so for every security fix), it builds a new Stoa kernel and publishes it as a `kernel-<version>`
   GitHub release. It also runs whenever `kernel/` changes, or on demand from the Actions tab.
 - The ISO workflow then rebuilds the ISO with the newest Stoa kernel.
-- On an installed system the Stoa kernel boots by default (its version, `6.8.12-…`, sorts above
+- On an installed system the Stoa kernel boots by default (its version, `7.0.0-…`, sorts above
   Ubuntu's `6.8.0-…`). Ubuntu's generic kernel stays installed as a fallback under **Advanced options**
   in the boot menu, and keeps receiving Ubuntu's security updates.
+- To build from Ubuntu's original 24.04 kernel (6.8) instead, set `SRC_PKG: linux` in the workflow.
 
 > **Updates on installed PCs:** new Stoa kernels reach installed systems once Stoa has a public
 > package repository (planned). Until then, reinstall from a new ISO or install the release's
@@ -43,8 +52,9 @@ The full configuration change is [`stoa.config`](stoa.config); edit it to tune t
 ```bash
 # Ubuntu 24.04, with deb-src enabled for noble, noble-updates and noble-security
 sudo apt install build-essential bc bison flex libssl-dev libelf-dev dwarves rsync cpio kmod zstd dpkg-dev debhelper python3-pil
-./build-kernel.sh                 # latest Ubuntu kernel source
-./build-kernel.sh 6.8.0-149.149   # or a specific one
+./build-kernel.sh                          # latest linux-hwe-7.0 source
+./build-kernel.sh 7.0.0-43.43~24.04.1      # or a specific one
+CONFIG_ONLY=1 ./build-kernel.sh            # just produce and check the merged config
 ls out/                           # linux-image-…-stoa_….deb, linux-headers-…
 ```
 

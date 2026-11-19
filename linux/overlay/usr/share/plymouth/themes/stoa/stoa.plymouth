@@ -1,0 +1,61 @@
+[Plymouth Theme]
+Name=Stoa
+Description=The Stoa start-up screen: the Stoa emblem on Stoa navy, with a spinner.
+ModuleName=two-step
+
+[two-step]
+Font=Inter 12
+TitleFont=Inter Light 28
+ImageDir=/usr/share/plymouth/themes/stoa
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.66
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.30
+HorizontalAlignment=.5
+VerticalAlignment=.70
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.42
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x121829
+BackgroundEndColor=0x2a2e66
+ProgressBarBackgroundColor=0x2a3550
+ProgressBarForegroundColor=0x4f8cff
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+
+[reboot]
+UseEndAnimation=false
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Installing updates
+SubTitle=Don't turn off your computer
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Upgrading Stoa
+SubTitle=Don't turn off your computer
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Updating firmware
+SubTitle=Don't turn off your computer
+
+[system-reset]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=Resetting Stoa
+SubTitle=Don't turn off your computer
