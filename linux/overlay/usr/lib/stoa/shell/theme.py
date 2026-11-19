@@ -49,7 +49,7 @@ button.fs-ai:hover { background-image: linear-gradient(135deg, #6a9dff, #8e66ec)
   color: #aab4cc; min-width: 170px;
 }
 .fs-search-pill:hover { background-color: rgba(255, 255, 255, 0.12); }
-.fs-dot { background-color: #8a96b3; border-radius: 2px; min-height: 3px; min-width: 6px; }
+.fs-dot { background-color: #8a96b3; border-radius: 2px; min-height: 3px; min-width: 6px; margin-bottom: 1px; }
 .fs-dot.fs-active { background-color: #4f8cff; min-width: 16px; }
 .fs-pill { border-radius: 12px; padding: 4px 12px; }
 .fs-clock-time { font-weight: 700; font-size: 13px; }
