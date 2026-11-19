@@ -109,6 +109,11 @@ sane-airscan
 # Stoa AI Local engine (llama.cpp): Vulkan for graphics cards, OpenMP for CPUs
 libvulkan1
 libgomp1
+# Pictures from phones and the web as wallpapers and thumbnails: WebP, HEIC (iPhone), AVIF
+webp-pixbuf-loader
+heif-gdk-pixbuf
+libheif-plugin-libde265
+libavif-gdk-pixbuf
 # Performance: compressed swap in RAM
 systemd-zram-generator
 # Security: firewall, app confinement, antivirus, drive encryption with TPM unlock

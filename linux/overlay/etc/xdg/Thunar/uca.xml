@@ -15,6 +15,15 @@
     <video-files/>
   </action>
   <action>
+    <icon>preferences-desktop-wallpaper</icon>
+    <name>Set as desktop wallpaper</name>
+    <unique-id>stoa-wallpaper</unique-id>
+    <command>stoa-settings set-wallpaper %f</command>
+    <description>Use this picture as the Stoa wallpaper</description>
+    <patterns>*</patterns>
+    <image-files/>
+  </action>
+  <action>
     <icon>security-high</icon>
     <name>Scan for viruses</name>
     <unique-id>stoa-scan</unique-id>

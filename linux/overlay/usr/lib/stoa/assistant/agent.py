@@ -213,12 +213,14 @@ TOOLS = [
     {
         "name": "change_setting",
         "description": "Change a system setting. volume/brightness take 0-100; wifi/bluetooth/airplane_mode take "
-                       "'on' or 'off'.",
+                       "'on' or 'off'; wallpaper takes a picture's path or a built-in one: stoa, aurora, sunrise, "
+                       "ocean, graphite or meadow.",
         "eager_input_streaming": True,
         "input_schema": {
             "type": "object",
             "properties": {
-                "setting": {"type": "string", "enum": ["volume", "brightness", "wifi", "bluetooth", "airplane_mode"]},
+                "setting": {"type": "string",
+                            "enum": ["volume", "brightness", "wifi", "bluetooth", "airplane_mode", "wallpaper"]},
                 "value": {"type": "string"},
             },
             "required": ["setting", "value"],
@@ -943,6 +945,15 @@ class Agent:
 
     def t_change_setting(self, a):
         import system
+        if a["setting"] == "wallpaper":
+            v = a["value"].strip()
+            builtin = {"stoa": "/usr/share/stoa/wallpaper.jpg"}
+            path = builtin.get(v.lower()) or (f"/usr/share/stoa/wallpapers/{v.lower()}.jpg"
+                                              if re.fullmatch(r"[a-z]+", v.lower()) else _user_path(v))
+            r = subprocess.run(["stoa-settings", "set-wallpaper", path], capture_output=True, text=True, timeout=60)
+            if r.returncode:
+                raise ValueError(r.stderr.strip() or "couldn't set that wallpaper")
+            return "Wallpaper changed."
         s, v = a["setting"], a["value"].strip().lower()
         on = v in ("on", "true", "yes", "1", "enable", "enabled")
         if s in ("volume", "brightness"):

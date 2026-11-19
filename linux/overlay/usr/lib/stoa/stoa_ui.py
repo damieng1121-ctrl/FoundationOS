@@ -28,6 +28,9 @@ window.background { background-color: #121829; color: #e8ecf5; }
 .f-ghost { background: #232c44; color: #e8ecf5; border: none; border-radius: 8px; padding: 6px 14px; }
 .f-ghost:hover { background: #2f3e60; }
 .f-card { background: #1a2238; border-radius: 12px; border: 1px solid #263150; padding: 14px; }
+.f-thumb { background: #1a2238; border: 2px solid transparent; border-radius: 10px; padding: 3px; }
+.f-thumb:hover { border-color: #3b4c78; }
+.f-thumb.f-selected { border-color: #4f8cff; }
 .f-badge { background: #263150; color: #9ab4ff; border-radius: 6px; padding: 1px 8px; font-size: 11px; }
 .f-side row { padding: 10px 14px; color: #c9d3ea; }
 .f-side row:selected { background: #2a3550; color: white; border-radius: 8px; }

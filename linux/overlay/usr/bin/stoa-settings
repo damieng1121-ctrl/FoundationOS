@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Stoa Settings hub."""
+import glob
 import os
+import shutil
 import subprocess
 import sys
 
@@ -13,19 +15,145 @@ from gi.repository import Gtk  # noqa: E402
 import stoa_ui as ui  # noqa: E402
 
 
+WALLPAPERS = ["/usr/share/stoa/wallpaper.jpg"] + sorted(glob.glob("/usr/share/stoa/wallpapers/*.jpg"))
+CONFIG_DIR = os.path.expanduser("~/.config/stoa")
+OWN_COPIES = os.path.join(os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")), "stoa", "wallpaper")
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".avif", ".bmp", ".gif", ".tif", ".tiff")
+
+
+def current_wallpaper():
+    try:
+        with open(os.path.join(CONFIG_DIR, "wallpaper")) as f:
+            p = f.read().strip()
+        return p if os.path.exists(p) else WALLPAPERS[0]
+    except OSError:
+        return WALLPAPERS[0]
+
+
+def set_wallpaper(path):
+    """Use a picture as the wallpaper. Returns an error message, or None.
+
+    Built-in wallpapers are used where they are. Anything else is turned upright (phone photos), scaled to at
+    most 4K and saved as Stoa's own JPEG copy, so WebP/HEIC/AVIF photos work and the wallpaper survives the
+    original being moved, deleted or on a USB stick that's unplugged."""
+    from gi.repository import GdkPixbuf, GLib
+    import time
+    if path not in WALLPAPERS:
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file(path)
+        except GLib.Error:
+            return f"{os.path.basename(path)} can't be used as a wallpaper - Stoa can't read that kind of picture."
+        pb = pb.apply_embedded_orientation() or pb
+        w, h = pb.get_width(), pb.get_height()
+        if w < 320 or h < 200:
+            return "That picture is too small to use as a wallpaper."
+        scale = min(1.0, 3840 / max(w, h))
+        if scale < 1.0:
+            pb = pb.scale_simple(int(w * scale), int(h * scale), GdkPixbuf.InterpType.HYPER)
+        os.makedirs(OWN_COPIES, exist_ok=True)
+        for old in glob.glob(os.path.join(OWN_COPIES, "wallpaper-*.jpg")):
+            os.remove(old)
+        path = os.path.join(OWN_COPIES, f"wallpaper-{int(time.time())}.jpg")
+        if pb.get_has_alpha():  # JPEG has no transparency: flatten onto Stoa navy
+            bg = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, pb.get_width(), pb.get_height())
+            bg.fill(0x121829FF)
+            pb.composite(bg, 0, 0, pb.get_width(), pb.get_height(), 0, 0, 1, 1, GdkPixbuf.InterpType.BILINEAR, 255)
+            pb = bg
+        pb.savev(path, "jpeg", ["quality"], ["92"])
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(os.path.join(CONFIG_DIR, "wallpaper"), "w") as fh:
+        fh.write(path)
+    subprocess.run(["stoa-shell", "wallpaper"], capture_output=True, timeout=15)
+    return None
+
+
+def recent_pictures(limit=12):
+    from gi.repository import GLib
+    pics = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES) or os.path.expanduser("~/Pictures")
+    found = []
+    for root, dirs, files in os.walk(pics):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if root.count(os.sep) - pics.count(os.sep) > 2:
+            dirs[:] = []
+        found += [os.path.join(root, f) for f in files if f.lower().endswith(IMAGE_EXT)]
+        if len(found) > 400:
+            break
+    found.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return found[:limit]
+
+
 def pick_wallpaper(parent):
-    dlg = Gtk.FileChooserDialog(title="Choose a wallpaper", parent=parent, action=Gtk.FileChooserAction.OPEN)
-    dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Set wallpaper", Gtk.ResponseType.OK)
-    f = Gtk.FileFilter()
-    f.add_mime_type("image/*")
-    dlg.add_filter(f)
-    if dlg.run() == Gtk.ResponseType.OK:
-        path = dlg.get_filename()
-        cfg = os.path.expanduser("~/.config/stoa")
-        os.makedirs(cfg, exist_ok=True)
-        with open(os.path.join(cfg, "wallpaper"), "w") as fh:
-            fh.write(path)
-        ui.spawn("stoa-shell", "wallpaper")
+    from gi.repository import GdkPixbuf, GLib
+    dlg = Gtk.Dialog(title="Wallpaper", transient_for=parent, modal=bool(parent))
+    dlg.set_default_size(*ui.fit_size(760, 560))
+    area = dlg.get_content_area()
+    area.set_border_width(16)
+    area.set_spacing(10)
+    area.pack_start(ui.css(Gtk.Label(label="Wallpaper", xalign=0), "f-title"), False, False, 0)
+    sw = Gtk.ScrolledWindow(vexpand=True)
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    sw.add(inner)
+    area.pack_start(sw, True, True, 0)
+    status = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+    buttons = []
+
+    def apply(path):
+        err = set_wallpaper(path)
+        status.set_text(err or "Wallpaper changed.")
+        mark(current_wallpaper() if not err else None)
+
+    def mark(cur):
+        for b, p in buttons:  # highlight the built-in wallpaper in use (your own pictures are used as copies)
+            ctx = b.get_style_context()
+            (ctx.add_class if p == cur else ctx.remove_class)("f-selected")
+
+    def section(title, paths):
+        if not paths:
+            return
+        inner.pack_start(ui.css(Gtk.Label(label=title, xalign=0), "f-h2"), False, False, 0)
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4, min_children_per_line=2,
+                           row_spacing=8, column_spacing=8, homogeneous=True)
+        for p in paths:
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(p, 168, 95, False)
+            except GLib.Error:
+                continue  # an unreadable picture: leave it out of the gallery
+            b = ui.css(Gtk.Button(), "f-thumb")
+            b.add(Gtk.Image.new_from_pixbuf(pb))
+            b.set_tooltip_text(os.path.basename(p))
+            b.connect("clicked", lambda _b, p=p: apply(p))
+            buttons.append((b, p))
+            flow.add(b)
+        inner.pack_start(flow, False, False, 0)
+
+    section("Stoa wallpapers", WALLPAPERS)
+    section("Your pictures", recent_pictures())
+    row = Gtk.Box(spacing=8)
+    browse = ui.css(Gtk.Button(label="Browse…"), "f-ghost")
+
+    def browse_clicked(*_):
+        fc = Gtk.FileChooserDialog(title="Choose a picture", transient_for=dlg, action=Gtk.FileChooserAction.OPEN)
+        fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Set as wallpaper", Gtk.ResponseType.OK)
+        f = Gtk.FileFilter()
+        f.set_name("Pictures")
+        f.add_mime_type("image/*")
+        fc.add_filter(f)
+        if fc.run() == Gtk.ResponseType.OK:
+            p = fc.get_filename()
+            fc.destroy()
+            apply(p)
+        else:
+            fc.destroy()
+
+    browse.connect("clicked", browse_clicked)
+    row.pack_start(browse, False, False, 0)
+    row.pack_start(status, True, True, 0)
+    area.pack_start(row, False, False, 0)
+    dlg.add_button("Done", Gtk.ResponseType.CLOSE)
+    mark(current_wallpaper())
+    dlg.show_all()
+    dlg.run()
     dlg.destroy()
 
 
@@ -111,6 +239,13 @@ TILES = [
 
 def main():
     ui.apply_css()
+    if len(sys.argv) > 2 and sys.argv[1] == "set-wallpaper":
+        err = set_wallpaper(os.path.abspath(sys.argv[2]))
+        if err:
+            if shutil.which("notify-send"):
+                ui.spawn("notify-send", "-a", "Stoa", "-i", "dialog-warning", "Wallpaper not changed", err)
+            sys.exit(err)
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "wallpaper":
         pick_wallpaper(None)
         return

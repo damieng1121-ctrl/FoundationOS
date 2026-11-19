@@ -17,6 +17,7 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confdef -o
   systemd-resolved x11-utils wlr-randr swaylock gnome-system-monitor brightnessctl \
   gir1.2-webkit2-4.1 \
   systemd-zram-generator libvulkan1 libgomp1 \
+  webp-pixbuf-loader heif-gdk-pixbuf libheif-plugin-libde265 libavif-gdk-pixbuf \
   mesa-vulkan-drivers mesa-vulkan-drivers:i386 libgl1-mesa-dri:i386 vulkan-tools gamemode ubuntu-drivers-common \
   libsdl2-2.0-0 libopengl0 \
   cups cups-browsed cups-filters ipp-usb avahi-daemon libnss-mdns system-config-printer \
@@ -98,6 +99,11 @@ cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT
+
+# Xfce's "Set as wallpaper" in Files only works with Xfce's desktop; Stoa has its own (Files > right-click >
+# "Set as desktop wallpaper"), so switch the Xfce one off.
+P=/usr/lib/x86_64-linux-gnu/thunarx-3/thunar-wallpaper-plugin.so
+[ -e "$P.stoa-disabled" ] || dpkg-divert --local --rename --divert "$P.stoa-disabled" --add "$P" >/dev/null
 
 # --- Security
 # Firewall: block incoming, allow outgoing (ufw's defaults; mDNS for printers is allowed). Rules load at boot.

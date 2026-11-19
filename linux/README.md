@@ -222,6 +222,15 @@ graphics libraries, GameMode and a higher `vm.max_map_count` (needed by some gam
   still stutters, set it to 1000 Hz in Polychromatic. Stoa AI's troubleshooting checks the kernel log for
   USB disconnects and resets.
 
+## Wallpaper
+
+**Settings → Wallpaper** (or right-click the desktop → Personalise) shows Stoa's six wallpapers and your
+recent pictures - click one to apply it - plus **Browse…** for anything else. In Files, right-click a
+picture → **Set as desktop wallpaper**, or ask Stoa AI ("make my wallpaper the ocean one"). Phone photos
+work too (JPEG, PNG, WebP, HEIC/HEIF from iPhones, AVIF): Stoa turns them the right way up, scales them to at
+most 4K and keeps its own copy, so the wallpaper stays even if the original is moved or was on a USB stick.
+(Xfce's own "Set as wallpaper" option, which can't work on Stoa's desktop, is switched off.)
+
 ## Accounts
 
 **Settings → Accounts** (or the account button in the Stoa menu): add people with a standard or

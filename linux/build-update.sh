@@ -80,7 +80,7 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
  printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
- systemd-zram-generator, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
+ systemd-zram-generator, webp-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, libavif-gdk-pixbuf, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings
@@ -122,6 +122,11 @@ if [ -d /usr/share/plymouth/themes/spinner ] && [ -f /usr/share/plymouth/themes/
   fi
 fi
 sysctl --system >/dev/null 2>&1 || true
+# Xfce's "Set as wallpaper" in Files only works with Xfce's desktop; Stoa has its own (Files > right-click >
+# "Set as desktop wallpaper"), so switch the Xfce one off.
+P=/usr/lib/x86_64-linux-gnu/thunarx-3/thunar-wallpaper-plugin.so
+[ -e "$P.stoa-disabled" ] || dpkg-divert --package stoa-desktop --rename --divert "$P.stoa-disabled" --add "$P" >/dev/null
+
 # Security defaults, once: firewall on (incoming blocked), daily virus signature updates.
 if [ ! -e /var/lib/stoa/security-defaults ]; then
   ufw --force enable >/dev/null 2>&1 || true
@@ -140,6 +145,8 @@ if [ "\$1" = remove ] || [ "\$1" = purge ]; then
   for f in ${DIVERTED[*]}; do
     dpkg-divert --package stoa-desktop --remove --rename --divert "\$f.ubuntu" "\$f" >/dev/null || true
   done
+  P=/usr/lib/x86_64-linux-gnu/thunarx-3/thunar-wallpaper-plugin.so
+  dpkg-divert --package stoa-desktop --remove --rename --divert "\$P.stoa-disabled" "\$P" >/dev/null 2>&1 || true
 fi
 EOF
 chmod 0755 "$STAGE"/DEBIAN/{preinst,postinst,postrm}
