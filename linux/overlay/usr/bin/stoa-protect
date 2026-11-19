@@ -305,10 +305,12 @@ def window():
                               (" The TPM unlocks it automatically on this PC; your password is the backup."
                                if tpm else (" You type the password when the PC starts." +
                                             ("" if has_tpm else " (No TPM chip found for automatic unlock.)"))))
-            tpm_btn.set_label("Ask for the password again" if tpm else "Unlock automatically with the TPM…")
+            if tpm_btn.get_sensitive():
+                tpm_btn.set_label("Ask for the password again" if tpm else "Unlock automatically with the TPM…")
             tpm_btn.set_visible(tpm or has_tpm)
         ok = (not have_scanner() or sig) and on
-        summary.set_text("Your PC is protected." if ok and encrypted else
+        summary.set_text("Almost ready - downloading virus signatures." if have_scanner() and not sig and on else
+                         "Your PC is protected." if ok and encrypted else
                          "Your PC is protected. Drive encryption is off." if ok else "Action needed - see below.")
 
     def fw_toggled(sw, _p):
@@ -443,7 +445,7 @@ def window():
     def tpm_clicked(*_):
         _, tpm = encryption_status()
         if tpm:
-            r = root_helper("tpm-remove")
+            args, stdin = ("tpm-remove",), None
         else:
             d = Gtk.Dialog(title="Unlock with the TPM", transient_for=win, modal=True)
             a = d.get_content_area()
@@ -467,15 +469,27 @@ def window():
             d.destroy()
             if resp != Gtk.ResponseType.OK or not pw:
                 return
-            r = root_helper("tpm-enroll", stdin=pw + "\n")
-        if r.returncode and r.returncode != 126:
-            say_error((r.stderr or r.stdout).strip() or "That didn't work.")
-        elif r.returncode == 0:
-            info = Gtk.MessageDialog(transient_for=win, modal=True, buttons=Gtk.ButtonsType.OK,
-                                     text=r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "Done.")
-            info.run()
-            info.destroy()
-        refresh()
+            args, stdin = ("tpm-enroll",), pw + "\n"
+        # Rebuilding the start-up image takes a minute or two: work in the background, keep the window alive.
+        tpm_btn.set_sensitive(False)
+        tpm_btn.set_label("Setting up - this can take a few minutes…")
+
+        def work():
+            r = root_helper(*args, stdin=stdin)
+            GLib.idle_add(finish, r)
+
+        def finish(r):
+            tpm_btn.set_sensitive(True)
+            if r.returncode and r.returncode != 126:
+                say_error((r.stderr or r.stdout).strip() or "That didn't work.")
+            elif r.returncode == 0:
+                info = Gtk.MessageDialog(transient_for=win, modal=True, buttons=Gtk.ButtonsType.OK,
+                                         text=r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "Done.")
+                info.run()
+                info.destroy()
+            refresh()
+
+        threading.Thread(target=work, daemon=True).start()
 
     tpm_btn.connect("clicked", tpm_clicked)
     refresh()
