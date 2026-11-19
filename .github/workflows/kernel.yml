@@ -80,6 +80,9 @@ jobs:
 
       - name: Publish release
         if: steps.ver.outputs.skip != 'true'
+        # The ISO build takes the packages from this run's artifact; a release is a convenience for
+        # downloading them by hand, so it mustn't fail the build (it needs write access for workflows).
+        continue-on-error: true
         run: |
           tag="${{ steps.ver.outputs.tag }}"
           gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true

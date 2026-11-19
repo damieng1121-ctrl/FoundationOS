@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: read   # download the kernel build's packages
 
 jobs:
   update:
@@ -59,12 +60,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 1) The packages saved by the kernel build that triggered this run, or by the newest kernel build
+          #    that produced them (artifacts last 30 days). 2) Otherwise the newest kernel-* release.
+          mkdir -p linux/kernel-debs
+          runs="${{ github.event.workflow_run.id }}"
+          runs="$runs $(gh run list --workflow kernel.yml --status completed --limit 15 --json databaseId --jq '.[].databaseId' || true)"
+          for id in $runs; do
+            if gh run download "$id" -n stoa-kernel --dir /tmp/stoa-kernel 2>/dev/null \
+               && ls /tmp/stoa-kernel/linux-image-*stoa*.deb >/dev/null 2>&1; then
+              cp /tmp/stoa-kernel/linux-image-*stoa*.deb /tmp/stoa-kernel/linux-headers-*stoa*.deb linux/kernel-debs/ 2>/dev/null || true
+              echo "Using the Stoa kernel built by run $id"; ls -l linux/kernel-debs; exit 0
+            fi
+            rm -rf /tmp/stoa-kernel
+          done
           tag="$(gh release list --limit 50 --json tagName --jq '.[].tagName' | grep '^kernel-' | sort -V | tail -1 || true)"
           if [ -n "$tag" ]; then
             gh release download "$tag" --pattern 'linux-image-*.deb' --pattern 'linux-headers-*.deb' --dir linux/kernel-debs
             echo "Using Stoa kernel $tag"; ls -l linux/kernel-debs
           else
-            echo "::warning::No Stoa kernel release yet - this ISO uses Ubuntu's stock kernel"
+            echo "::warning::No Stoa kernel found - this ISO uses Ubuntu's stock kernel"
           fi
 
       - name: Build Stoa Shell helper (Rust)
