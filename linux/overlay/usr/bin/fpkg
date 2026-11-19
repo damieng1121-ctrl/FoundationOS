@@ -326,6 +326,10 @@ def install_windows(installer, app_id=None, name=None, args=None, exec_path=None
         die("Razer Synapse needs Razer's Windows drivers, so it can't run on Stoa (or any Linux). "
             "Install 'Razer devices' instead - stoa install razer - for lighting, DPI, polling rate and "
             "battery on Razer keyboards, mice and headsets.")
+    if re.search(r"movie.?duels|jedi.?academy|\bjka\b|openjk|\bja\+|jedi.?knight", os.path.basename(installer), re.I) \
+            and not app_id:
+        # Jedi Academy mods install into the game (with their own Stoa menu entry), not as separate Windows apps.
+        os.execvp("stoa-game-setup", ["stoa-game-setup", "jka-mod", os.path.abspath(installer)])
     installer = os.path.abspath(installer)
     name = name or os.path.splitext(os.path.basename(installer))[0]
     app_id = app_id or slug(name)

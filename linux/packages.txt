@@ -116,6 +116,10 @@ libheif-plugin-libde265
 libavif-gdk-pixbuf
 # Performance: compressed swap in RAM
 systemd-zram-generator
+# Game mods (ModDB installers and archives): unpack .exe/.zip/.7z/.rar
+p7zip-full
+innoextract
+unar
 # Task Manager: graphics card and USB device names
 pciutils
 usbutils

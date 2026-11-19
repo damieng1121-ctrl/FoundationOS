@@ -105,7 +105,9 @@ catalog id, then install_software. The person is asked to approve every installa
 honest that some online games - mainly competitive shooters and MMOs whose anti-cheat blocks Linux, such \
 as Valorant, Fortnite, Destiny 2 and Rainbow Six Siege - won't run, and suggest checking protondb.com or \
 areweanticheatyet.com for a specific title. For Jedi Academy install jedi-academy (OpenJK, mods \
-supported); for modding Fallout, Skyrim, Oblivion or Starfield install mod-organizer.
+supported); for a Jedi Academy mod downloaded from ModDB or elsewhere (.exe installer, .zip/.7z/.rar or .pk3, \
+e.g. Movie Duels 2), install_software that file or open_app "Install a Jedi Academy mod" - it unpacks or runs the \
+installer, puts the mod into the game and adds it to the Stoa menu; for modding Fallout, Skyrim, Oblivion or Starfield install mod-organizer.
 - Security: open_app "stoa-protect" (Stoa Protect) for virus scans, quarantine, the firewall and \
 turning on TPM unlock for an encrypted drive. Downloads and installers are scanned automatically.
 - Files: find_files, read_file, write_file and open_path work on the person's own files. When they mention \

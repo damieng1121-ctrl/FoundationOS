@@ -3,6 +3,8 @@
 
   stoa-game-setup jedi-academy          Jedi Academy on OpenJK (modern engine), using your Steam/GOG game files
   stoa-game-setup mod-organizer [game]  Mod Organizer 2 for Fallout, Skyrim and more (via MO2-LINT, for Steam/Heroic)
+  stoa-game-setup jka-mod [FILE]        install a Jedi Academy mod: a ModDB .exe installer, .zip/.7z/.rar or .pk3
+                                        (e.g. Movie Duels 2), with its own entry in the Stoa menu
   stoa-game-setup steam-drives          find Steam games already installed on other drives (e.g. from Windows)
                                         and add them to Steam, so they show as installed
   stoa-game-setup remove <name>         undo jedi-academy or mod-organizer
@@ -82,7 +84,8 @@ def desktop(file_id, name, exec_, icon, comment="", categories="Game;", workdir=
 
 
 def refresh_menu():
-    subprocess.run(["update-desktop-database", APPS], capture_output=True)
+    if shutil.which("update-desktop-database"):
+        subprocess.run(["update-desktop-database", APPS], capture_output=True)
 
 
 def steam_libraries():
@@ -204,6 +207,289 @@ def remove_jedi_academy():
             os.remove(p)
     refresh_menu()
     say(f"Removed OpenJK. Your mods and saves are kept in {os.path.dirname(JKA_MODS)}.")
+
+
+# ------------------------------------------------------------ Jedi Academy mods (ModDB installers and archives)
+
+JKA_WINE = os.path.join(GAMES, "jka-wine")          # Windows set-up for mods that bring their own Windows engine
+JKA_MOD_STATE = os.path.join(GAMES, "jka-mods.json")
+JUNK_NAMES = {"$pluginsdir", "$temp", "$_outdir", "[nsis].nsi", "uninstall.exe", "uninst.exe", "unins000.exe",
+              "unins000.dat", "$r0", "$0"}
+
+
+def tool(*names):
+    for n in names:
+        if shutil.which(n):
+            return n
+    return None
+
+
+def unpack(path, dest):
+    """Unpack an archive or a Windows installer without running it. True if anything came out."""
+    os.makedirs(dest, exist_ok=True)
+    low = path.lower()
+    tries = []
+    if low.endswith(".exe"):
+        if tool("innoextract"):
+            tries.append(["innoextract", "--silent", "--extract", "--output-dir", dest, path])  # Inno Setup
+        if tool("7z"):
+            tries.append(["7z", "x", "-y", f"-o{dest}", path])                                  # NSIS, 7-Zip SFX
+        if tool("unar"):
+            tries.append(["unar", "-q", "-f", "-o", dest, path])                                # RAR/ZIP SFX
+    else:
+        if tool("7z"):
+            tries.append(["7z", "x", "-y", f"-o{dest}", path])
+        if tool("unar"):
+            tries.append(["unar", "-q", "-f", "-o", dest, path])
+        if low.endswith(".zip") and tool("unzip"):
+            tries.append(["unzip", "-q", "-o", path, "-d", dest])
+    for cmd in tries:
+        shutil.rmtree(dest, ignore_errors=True)
+        os.makedirs(dest)
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        files = [f for _r, _d, fs in os.walk(dest) for f in fs]
+        if r.returncode == 0 and any(f.lower().endswith((".pk3", ".bat", ".exe", ".dll", ".cfg")) for f in files):
+            return True
+    return False
+
+
+def mod_root(staging):
+    """The folder in an unpacked mod that corresponds to Jedi Academy's GameData folder."""
+    for junk in os.listdir(staging):
+        if junk.lower() in JUNK_NAMES:
+            p = os.path.join(staging, junk)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
+    # Explicit GameData folder anywhere near the top
+    for cur, dirs, _f in os.walk(staging):
+        if os.path.relpath(cur, staging).count(os.sep) > 4:
+            dirs[:] = []
+            continue
+        for d in dirs:
+            if d.lower() == "gamedata":
+                return os.path.join(cur, d)
+    # Installer layouts: Inno's app/, NSIS's $INSTDIR
+    for d in ("app", "$INSTDIR", "$_OUTDIR"):
+        if os.path.isdir(os.path.join(staging, d)):
+            staging = os.path.join(staging, d)
+    # A single wrapper folder (e.g. "Movie Duels 2/")
+    while True:
+        items = [i for i in os.listdir(staging) if not i.startswith(".")]
+        if len(items) == 1 and os.path.isdir(os.path.join(staging, items[0])) and \
+                not glob.glob(os.path.join(staging, items[0], "*.pk3")):
+            staging = os.path.join(staging, items[0])
+            continue
+        break
+    # Only .pk3 files at the top: it's a mod folder's contents; name it after the archive later
+    return staging
+
+
+def merge_tree(src, dst, record):
+    """Copy src into dst (the game's GameData), never replacing the original game's files."""
+    for cur, dirs, files in os.walk(src):
+        rel = os.path.relpath(cur, src)
+        out = os.path.normpath(os.path.join(dst, rel))
+        os.makedirs(out, exist_ok=True)
+        for f in files:
+            target = os.path.join(out, f)
+            if re.match(r"assets\d\.pk3$", f, re.I) and os.path.exists(target):
+                continue
+            shutil.copy2(os.path.join(cur, f), target)
+            record.append(os.path.relpath(target, dst))
+
+
+def bat_launch(gamedata, bat):
+    """(exe, args) from a mod's Windows launcher .bat, e.g. 'openjk_sp.x86.exe +set fs_game MovieDuels'."""
+    try:
+        text = open(os.path.join(gamedata, bat), errors="replace").read()
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = re.search(r'"?([^"\s]*\.exe)"?(.*)$', line, re.I)
+        if m and not line.strip().lower().startswith(("rem", "::")):
+            exe = m.group(1).replace("\\", "/").lstrip("./")
+            args = m.group(2).strip()
+            if os.path.exists(os.path.join(gamedata, exe)):
+                return exe, args
+    return None
+
+
+def pretty(name):
+    name = re.sub(r"\.(bat|exe|pk3|zip|7z|rar)$", "", name, flags=re.I)
+    name = re.sub(r"[_]+", " ", name).replace(" - ", " – ")
+    return re.sub(r"\s+", " ", name).strip() or "Jedi Academy mod"
+
+
+def jka_wine_env():
+    env = dict(os.environ, WINEPREFIX=JKA_WINE, WINEDEBUG="-all", WINEDLLOVERRIDES="mscoree,mshtml=")
+    if not os.path.exists(os.path.join(JKA_WINE, "system.reg")):
+        say("Preparing Windows support for the mod (first time only)...")
+        os.makedirs(JKA_WINE, exist_ok=True)
+        subprocess.run(["wine", "wineboot", "-i"], env=env, capture_output=True)
+    return env
+
+
+def register_jka_path(env, gamedata):
+    """Tell Windows installers where Jedi Academy is, the way a Windows PC would."""
+    win = subprocess.run(["wine", "winepath", "-w", os.path.dirname(gamedata)], env=env, capture_output=True,
+                         text=True).stdout.strip()
+    for key in (r"HKLM\Software\LucasArts\Star Wars Jedi Knight Jedi Academy\1.0",
+                r"HKLM\Software\Wow6432Node\LucasArts\Star Wars Jedi Knight Jedi Academy\1.0"):
+        subprocess.run(["wine", "reg", "add", key, "/v", "Install Path", "/t", "REG_SZ", "/d", win, "/f"],
+                       env=env, capture_output=True)
+    return win
+
+
+def snapshot(folder):
+    out = {}
+    for cur, _d, files in os.walk(folder):
+        for f in files:
+            p = os.path.join(cur, f)
+            try:
+                out[os.path.relpath(p, folder)] = os.path.getmtime(p)
+            except OSError:
+                pass
+    return out
+
+
+def setup_jka_mod(path=None):
+    if not path:
+        if not GUI:
+            fail("Name the mod file: stoa-game-setup jka-mod ~/Downloads/<mod>.exe")
+        r = subprocess.run(["zenity", "--file-selection", "--title=Choose the Jedi Academy mod you downloaded",
+                            f"--filename={os.path.join(HOME, 'Downloads')}/",
+                            "--file-filter=Jedi Academy mods | *.exe *.EXE *.zip *.7z *.rar *.pk3 *.ZIP *.PK3",
+                            "--file-filter=All files | *"], capture_output=True, text=True)
+        path = r.stdout.strip()
+        if not path:
+            return
+    path = os.path.abspath(path)
+    if not os.path.isfile(path):
+        fail(f"{path} doesn't exist.")
+    if shutil.which("stoa-protect"):  # scanned like every other download
+        say(f"Checking {os.path.basename(path)} for viruses...")
+        r = subprocess.run(["stoa-protect", "check", path], capture_output=True, text=True)
+        if r.returncode == 1:
+            fail(f"Stoa Protect found a virus in {os.path.basename(path)} and quarantined it, so it wasn't installed.")
+
+    if path.lower().endswith(".pk3"):  # a simple mod: drop it in the mods folder
+        os.makedirs(JKA_MODS, exist_ok=True)
+        shutil.copy2(path, JKA_MODS)
+        info(f"Added {os.path.basename(path)}. Start Jedi Academy to use it.", "Jedi Academy mod")
+        return
+
+    base = find_jka_base() or ask_for_jka_base()
+    if not base:
+        fail("Jedi Academy's game files weren't found. Install Jedi Academy in Steam first.")
+    gamedata = os.path.dirname(base)
+    say(f"Jedi Academy is in {gamedata}")
+    before = snapshot(gamedata)
+    record = []
+    with tempfile.TemporaryDirectory(dir=os.path.join(HOME, ".cache")) as td:
+        staging = os.path.join(td, "mod")
+        say(f"Unpacking {os.path.basename(path)}...")
+        if unpack(path, staging):
+            root = mod_root(staging)
+            if glob.glob(os.path.join(root, "*.pk3")) and not os.path.isdir(os.path.join(root, "base")) \
+                    and os.path.basename(root) in ("mod", "app"):
+                # loose .pk3 files: a mod folder named after the download
+                target = re.sub(r"[^A-Za-z0-9_-]+", "", pretty(os.path.basename(path)).title()) or "Mod"
+                merge_tree(root, os.path.join(gamedata, target), record)
+                record = [os.path.join(target, r) for r in record]
+            else:
+                merge_tree(root, gamedata, record)
+        elif path.lower().endswith(".exe"):
+            # An installer Stoa can't unpack: run it, pointed at the game.
+            env = jka_wine_env()
+            win = register_jka_path(env, gamedata)
+            info("The mod's installer opens next.\n\nIf it asks where Jedi Academy is installed, choose:\n\n"
+                 f"    {win}\\GameData\n\n(it's under drive Z: in the folder list).", "Installing the mod")
+            subprocess.run(["wine", path], env=env)
+            subprocess.run(["wineserver", "-w"], env=env)
+        else:
+            fail(f"{os.path.basename(path)} couldn't be unpacked. It may be damaged - try downloading it again.")
+    after = snapshot(gamedata)
+    changed = sorted(p for p in after if p not in before or after[p] != before[p])
+    if not changed:
+        fail("The mod didn't add anything to Jedi Academy. If its installer asked for a folder, run this again and "
+             "choose the GameData folder it shows you.")
+
+    # How to start it: the mod's own launcher (.bat), else OpenJK with the mod folder.
+    top = sorted({c.split(os.sep)[0] for c in changed})
+    mod_dirs = [d for d in top if os.path.isdir(os.path.join(gamedata, d)) and d.lower() != "base"]
+    bats = [c for c in changed if c.lower().endswith(".bat") and os.sep not in c]
+    launch = next((bat_launch(gamedata, b) + (b,) for b in bats if bat_launch(gamedata, b)), None)
+    fs_game = None
+    if launch:
+        m = re.search(r'fs_game\s+"?([^"\s]+)"?', launch[1])
+        fs_game = m.group(1) if m else None
+    fs_game = fs_game or (mod_dirs[0] if mod_dirs else None)
+    mod_dir = os.path.join(gamedata, fs_game) if fs_game else None
+    windows_code = bool(mod_dir) and bool(glob.glob(os.path.join(mod_dir, "*.dll"))) and \
+        not glob.glob(os.path.join(mod_dir, "*.so"))
+    name = pretty(launch[2]) if launch else re.sub(r"(?i)[ _-]*(setup|installer|install|full|all in one)\b", "",
+                                                    pretty(os.path.basename(path))).strip() or pretty(fs_game or "")
+    fid = "stoa-jka-mod-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+    if launch and (windows_code or not re.match(r"openjk", launch[0], re.I)):
+        # The mod brings its own Windows engine or game code: run it exactly as on Windows.
+        jka_wine_env()
+        exe = os.path.join(gamedata, launch[0])
+        how = "its own engine (Windows version, through Stoa's Windows support)"
+        exec_ = (f'env WINEPREFIX="{JKA_WINE}" WINEDEBUG=-all wine "{exe}" {launch[1]}').strip()
+    elif fs_game:
+        if not os.path.exists(os.path.join(OPENJK_DIR, "openjk_sp.x86_64")):
+            say("Setting up OpenJK first...")
+            setup_jedi_academy()
+        link = os.path.join(OPENJK_DIR, fs_game)
+        if not os.path.exists(link):
+            os.symlink(mod_dir, link)
+        sp = not re.search(r"openjk\.|jamp", launch[0], re.I) if launch else True
+        exe = os.path.join(OPENJK_DIR, "openjk_sp.x86_64" if sp else "openjk.x86_64")
+        how = "OpenJK (native)"
+        exec_ = f'"{exe}" +set fs_game {fs_game}'
+    else:
+        info(f"The mod was added to Jedi Academy's base folder ({len(changed)} files). Start Jedi Academy to use "
+             "it.", "Jedi Academy mod")
+        return
+    desktop(fid, name, exec_, "applications-games", f"Jedi Academy mod - runs on {how}",
+            workdir=os.path.dirname(exe))
+    refresh_menu()
+    state = {}
+    try:
+        state = json.load(open(JKA_MOD_STATE))
+    except (OSError, ValueError):
+        pass
+    state[fid] = {"name": name, "gamedata": gamedata, "files": changed, "source": os.path.basename(path)}
+    os.makedirs(GAMES, exist_ok=True)
+    json.dump(state, open(JKA_MOD_STATE, "w"), indent=1)
+    info(f"{name} is installed.\n\nStart it from the Stoa menu: '{name}'.\nIt runs on {how}.\n\n"
+         f"To remove it: stoa-game-setup remove jka-mod", "Jedi Academy mod")
+
+
+def remove_jka_mods():
+    try:
+        state = json.load(open(JKA_MOD_STATE))
+    except (OSError, ValueError):
+        say("No Jedi Academy mods were installed by Stoa.")
+        return
+    for fid, m in state.items():
+        for rel in m["files"]:
+            p = os.path.join(m["gamedata"], rel)
+            if os.path.isfile(p) and not re.match(r"assets\d\.pk3$", os.path.basename(p), re.I):
+                os.remove(p)
+        for rel in sorted({os.path.dirname(r) for r in m["files"]}, key=len, reverse=True):
+            d = os.path.join(m["gamedata"], rel)
+            if rel and os.path.isdir(d) and not os.listdir(d):
+                os.rmdir(d)
+        p = os.path.join(APPS, f"{fid}.desktop")
+        if os.path.exists(p):
+            os.remove(p)
+        say(f"Removed {m['name']}.")
+    os.remove(JKA_MOD_STATE)
+    for link in glob.glob(os.path.join(OPENJK_DIR, "*")):
+        if os.path.islink(link) and not os.path.exists(link):
+            os.remove(link)  # OpenJK's link to a removed mod folder
+    refresh_menu()
 
 
 # ------------------------------------------------------------ Mod Organizer 2
@@ -497,10 +783,13 @@ def main():
         setup_jedi_academy()
     elif a[0] == "mod-organizer":
         setup_mod_organizer(a[1] if len(a) > 1 else None)
+    elif a[0] == "jka-mod":
+        setup_jka_mod(a[1] if len(a) > 1 else None)
     elif a[0] == "steam-drives":
         setup_steam_drives()
     elif a[0] == "remove" and len(a) > 1:
-        {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer}.get(
+        {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer,
+         "jka-mod": remove_jka_mods}.get(
             a[1], lambda: fail(f"unknown set-up {a[1]}"))()
     else:
         fail(f"unknown command: {' '.join(a)}")

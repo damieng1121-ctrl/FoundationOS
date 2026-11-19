@@ -80,7 +80,7 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
  printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
- systemd-zram-generator, pciutils, usbutils, vulkan-tools, webp-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, libavif-gdk-pixbuf, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
+ systemd-zram-generator, pciutils, usbutils, p7zip-full, innoextract, unar, vulkan-tools, webp-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, libavif-gdk-pixbuf, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings

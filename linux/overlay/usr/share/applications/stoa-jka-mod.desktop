@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install a Jedi Academy mod
+Comment=Install a mod you downloaded (ModDB .exe installer, .zip, .7z, .rar or .pk3), such as Movie Duels 2
+Exec=stoa-game-setup jka-mod %f
+Icon=applications-games
+Categories=Game;
+NoDisplay=false
+Keywords=jedi;academy;jka;mod;moddb;movie duels;pk3;openjk;star wars;
