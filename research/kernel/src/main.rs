@@ -7,6 +7,8 @@ extern crate alloc;
 
 mod allocator;
 mod apps;
+mod ata;
+mod e1000;
 mod fs;
 mod gdt;
 mod gfx;
@@ -14,7 +16,11 @@ mod interrupts;
 mod mathx;
 mod memory;
 mod mouse;
+mod net;
+mod pci;
+mod programs;
 mod rtc;
+mod sched;
 mod serial;
 mod sys;
 mod wm;
@@ -39,7 +45,7 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     serial::init();
-    klog!("Stoa 0.1 booting");
+    klog!("Stoa 0.2 booting");
 
     gdt::init();
     interrupts::init_idt();
@@ -54,8 +60,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     sys::HEAP_READY.store(true, Ordering::Release);
     sys::PHYS_USABLE.store(frames.usable_bytes(), Ordering::Relaxed);
     sys::FRAMES_USED.store(frames.allocated, Ordering::Relaxed);
+    memory::install(mapper, frames);
     klog!("paging ready, heap {} at {:#x}", sys::human_bytes(allocator::HEAP_SIZE as u64), allocator::HEAP_START);
-    klog!("physical memory: {} usable", sys::human_bytes(frames.usable_bytes()));
+    klog!("physical memory: {} usable", sys::human_bytes(sys::PHYS_USABLE.load(Ordering::Relaxed)));
 
     let fb = boot_info.framebuffer.take().expect("no framebuffer");
     let info = fb.info();
@@ -64,8 +71,12 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     sys::SCREEN_H.store(info.height as u32, Ordering::Relaxed);
     klog!("framebuffer {}x{} {:?} {}bpp", info.width, info.height, info.pixel_format, info.bytes_per_pixel * 8);
 
+    pci::init();
+    ata::init();
     fs::init();
     mouse::init();
+    sched::init();
+    net::init();
     interrupts::init_pics_and_pit();
     x86_64::instructions::interrupts::enable();
     klog!("interrupts enabled; PIT at {} Hz; cpu: {}", interrupts::TIMER_HZ, sys::cpu_brand());
@@ -106,6 +117,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                 desktop.mouse(ev);
             }
         }
+        sched::reap();
         desktop.tick();
         if desktop.dirty {
             desktop.draw(&mut canvas);
@@ -115,7 +127,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         // Sleep until the next interrupt unless input arrived meanwhile.
         x86_64::instructions::interrupts::disable();
         if interrupts::KEY_QUEUE.is_empty() && interrupts::MOUSE_QUEUE.is_empty() {
+            sched::IDLE.store(true, Ordering::Relaxed);
             x86_64::instructions::interrupts::enable_and_hlt();
+            sched::IDLE.store(false, Ordering::Relaxed);
         } else {
             x86_64::instructions::interrupts::enable();
         }

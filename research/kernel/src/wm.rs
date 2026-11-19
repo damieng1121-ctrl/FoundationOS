@@ -430,7 +430,7 @@ impl Desktop {
         c.fill_rect(m.x, m.y + MENU_HEADER_H - 12, m.w, 12, 0x24304A);
         draw_logo(c, m.x + 14, m.y + 14, 36, 0xFFFFFF, 255);
         c.text(m.x + 62, m.y + 12, "Stoa", FONT_MED, 0xFFFFFF);
-        c.text(m.x + 62, m.y + 36, "version 0.1", FONT, 0x9AA8C7);
+        c.text(m.x + 62, m.y + 36, "version 0.2", FONT, 0x9AA8C7);
         for (i, kind) in apps::ALL.iter().enumerate() {
             let y = m.y + MENU_HEADER_H + i as i32 * MENU_ITEM_H;
             if self.hover_menu == Some(i) {

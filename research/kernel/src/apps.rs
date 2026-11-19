@@ -183,15 +183,60 @@ pub struct Terminal {
     hist_pos: usize,
     blink: bool,
     exit: bool,
+    jobs: Vec<u64>,
 }
 
 impl Terminal {
     pub fn new() -> Self {
-        let mut t = Self { lines: Vec::new(), input: String::new(), history: Vec::new(), hist_pos: 0, blink: true, exit: false };
-        t.out("Stoa 0.1 - Rust x86_64 kernel", T_BLUE);
+        let mut t = Self { lines: Vec::new(), input: String::new(), history: Vec::new(), hist_pos: 0, blink: true,
+            exit: false, jobs: Vec::new() };
+        t.out("Stoa 0.2 - Rust x86_64 kernel", T_BLUE);
         t.out("Type 'help' for a list of commands.", T_FG);
         t.out("", T_FG);
         t
+    }
+
+    fn start(&mut self, name: &str) {
+        match crate::programs::find(name) {
+            Some(p) => match crate::sched::spawn_elf(p.name, p.elf) {
+                Ok(id) => {
+                    self.jobs.push(id);
+                    self.out(&format!("[started process {}]", id), T_YELLOW);
+                }
+                Err(e) => self.out(&format!("run: {}", e), T_RED),
+            },
+            None => self.out("run: no such program (try 'programs')", T_RED),
+        }
+    }
+
+    /// Show output from programs this terminal started.
+    fn collect(&mut self) -> bool {
+        if self.jobs.is_empty() {
+            return false;
+        }
+        let mut mine = Vec::new();
+        {
+            let mut q = crate::sched::CONSOLE.lock();
+            q.retain(|(pid, text)| {
+                if self.jobs.contains(pid) {
+                    mine.push((*pid, text.clone()));
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        for (pid, text) in &mine {
+            if text.starts_with('[') {
+                self.out(&format!("{} (process {})", text, pid), T_YELLOW);
+                if !text.starts_with("[crashed") {
+                    self.jobs.retain(|j| j != pid);
+                }
+            } else {
+                self.out(text.trim_end_matches('\n'), T_FG);
+            }
+        }
+        !mine.is_empty()
     }
 
     fn out(&mut self, s: &str, c: Color) {
@@ -222,7 +267,12 @@ ls                list files\n  cat <file>        show a file\n  write <file> <t
 rm <file>         delete a file\n  edit <file>       open a file in Editor \n  open <app>        launch an app\n  \
 apps              list apps\n  ps                list open windows\n  uptime | date    time info\n  \
 mem               memory usage\n  cpu               processor info\n  calc <a> <op> <b> integer maths\n  \
-neofetch          system summary\n  dmesg             kernel log\n  reboot | shutdown power\n  exit              close terminal",
+neofetch          system summary\n  dmesg             kernel log\n  \
+lspci             PCI devices\n  lsblk | df        disks and storage\n  \
+programs          user programs in /bin\n  run <program>     start a program (ring 3)\n  \
+tasks             running tasks and CPU use\n  kill <id>         stop a task\n  \
+ifconfig          network address (DHCP)\n  ping <ip>         ping a computer\n  \
+arp | dhcp        neighbours / renew address\n  reboot | shutdown power\n  exit              close terminal",
                 T_FG,
             ),
             "clear" => self.lines.clear(),
@@ -319,7 +369,7 @@ neofetch          system summary\n  dmesg             kernel log\n  reboot | shu
                 let h = sys::SCREEN_H.load(core::sync::atomic::Ordering::Relaxed);
                 self.out("     /\\        stoa@stoa", T_BLUE);
                 self.out("    /  \\       ---------------------", T_BLUE);
-                self.out(&format!("   /____\\      OS:      Stoa 0.1 x86_64"), T_BLUE);
+                self.out(&format!("   /____\\      OS:      Stoa 0.2 x86_64"), T_BLUE);
                 self.out(&format!("   | || |      Kernel:  stoa (Rust, no_std)"), T_BLUE);
                 self.out(&format!("   | || |      Uptime:  {}", sys::uptime_string()), T_BLUE);
                 self.out(&format!("  _|_||_|_     Display: {}x{}", w, h), T_BLUE);
@@ -329,6 +379,100 @@ neofetch          system summary\n  dmesg             kernel log\n  reboot | shu
                     T_BLUE,
                 );
             }
+            "lspci" => {
+                for d in crate::pci::devices() {
+                    self.out(&format!("  {}", d.describe()), T_FG);
+                }
+            }
+            "lsblk" => {
+                let disks = crate::ata::disks();
+                if disks.is_empty() {
+                    self.out("(no ATA disks)", T_FG);
+                }
+                for d in disks {
+                    self.out(
+                        &format!("  ata{}  {:>9}  {}", d.id, sys::human_bytes(d.sectors * 512), d.model),
+                        T_BLUE,
+                    );
+                }
+            }
+            "df" => self.out(&fs::status(), T_FG),
+            "programs" | "bin" => {
+                for p in crate::programs::PROGRAMS {
+                    self.out(&format!("  {:<10} {:>6} B  {}", p.name, p.elf.len(), p.about), T_BLUE);
+                }
+            }
+            "run" => self.start(rest),
+            "tasks" | "top" => {
+                let tasks = crate::sched::tasks();
+                let idle = crate::sched::IDLE_TICKS.load(core::sync::atomic::Ordering::Relaxed);
+                let total: u64 = (tasks.iter().map(|t| t.ticks).sum::<u64>() + idle).max(1);
+                self.out("    ID  MODE    STATE      CPU  NAME", T_YELLOW);
+                for t in tasks {
+                    let state = match t.state {
+                        crate::sched::State::Ready => "running",
+                        crate::sched::State::Sleeping(_) => "sleeping",
+                        crate::sched::State::Dead(_) => "ending",
+                    };
+                    self.out(
+                        &format!("  {:>4}  {:<6}  {:<9} {:>3}%  {}", t.id, if t.user { "user" } else { "kernel" },
+                            state, t.ticks * 100 / total, t.name),
+                        T_FG,
+                    );
+                }
+                self.out(&format!("     -  -       idle      {:>3}%  (CPU waiting for work)", idle * 100 / total), T_FG);
+                self.out(&format!("  context switches: {}", crate::sched::SWITCHES.load(core::sync::atomic::Ordering::Relaxed)), T_FG);
+            }
+            "kill" => match rest.parse::<u64>() {
+                Ok(id) if crate::sched::kill(id) => self.out(&format!("stopped task {}", id), T_FG),
+                _ => self.out("kill: no such task (see 'tasks'; task 0 is the desktop)", T_RED),
+            },
+            "ifconfig" | "ip" => match crate::net::config() {
+                None => self.out("no network card found", T_RED),
+                Some(c) => {
+                    let (rx, tx) = crate::net::stats();
+                    self.out(&format!("eth0  MAC {}", crate::net::mac_str(c.mac)), T_BLUE);
+                    if c.configured {
+                        self.out(
+                            &format!("      inet {}  mask {}\n      gateway {}  dns {}  (DHCP from {}, lease {}s)",
+                                crate::net::ip_str(c.ip), crate::net::ip_str(c.mask), crate::net::ip_str(c.gateway),
+                                crate::net::ip_str(c.dns), crate::net::ip_str(c.server), c.lease_s),
+                            T_FG,
+                        );
+                    } else {
+                        self.out("      waiting for an address (DHCP)...", T_YELLOW);
+                    }
+                    self.out(&format!("      packets: {} received, {} sent", rx, tx), T_FG);
+                }
+            },
+            "ping" => {
+                let target = if rest.is_empty() {
+                    crate::net::config().filter(|c| c.configured).map(|c| c.gateway)
+                } else {
+                    crate::net::parse_ip(rest)
+                };
+                match target {
+                    None => self.out("usage: ping <a.b.c.d>   (no address: pings the gateway)", T_YELLOW),
+                    Some(ip) => match crate::net::ping(ip, 4) {
+                        Ok(pid) => {
+                            self.out(&format!("PING {}", crate::net::ip_str(ip)), T_FG);
+                            if !self.jobs.contains(&pid) {
+                                self.jobs.push(pid);
+                            }
+                        }
+                        Err(e) => self.out(&format!("ping: {}", e), T_RED),
+                    },
+                }
+            }
+            "arp" => {
+                for (ip, mac) in crate::net::arp_table() {
+                    self.out(&format!("  {:<16} {}", crate::net::ip_str(ip), crate::net::mac_str(mac)), T_FG);
+                }
+            }
+            "dhcp" => {
+                crate::net::renew();
+                self.out("asking for a new address...", T_FG);
+            }
             "dmesg" => {
                 for l in sys::log_lines() {
                     self.out(&l, T_FG);
@@ -337,6 +481,7 @@ neofetch          system summary\n  dmesg             kernel log\n  reboot | shu
             "reboot" => sys::reboot(),
             "shutdown" | "poweroff" => sys::shutdown(),
             "exit" => self.exit = true,
+            _ if crate::programs::find(cmd).is_some() => self.start(cmd),
             _ => self.out(&format!("{}: command not found", cmd), T_RED),
         }
     }
@@ -374,7 +519,7 @@ impl App for Terminal {
         let b = blink();
         let changed = b != self.blink;
         self.blink = b;
-        changed
+        self.collect() || changed
     }
     fn closed(&self) -> bool {
         self.exit
@@ -535,6 +680,10 @@ impl App for Monitor {
             ("Timer ticks", format!("{} @ 100 Hz", sys::ticks())),
             ("Frames drawn", format!("{}", sys::FRAMES_DRAWN.load(Relaxed))),
             ("Windows", format!("{}", sys::WINDOWS.lock().len())),
+            ("Tasks", format!("{} ({} switches)", crate::sched::tasks().len(),
+                crate::sched::SWITCHES.load(Relaxed))),
+            ("Network", crate::net::config().filter(|c| c.configured)
+                .map(|c| crate::net::ip_str(c.ip)).unwrap_or_else(|| String::from("not connected"))),
             ("Physical RAM", sys::human_bytes(sys::PHYS_USABLE.load(Relaxed))),
         ];
         c.set_clip(r);
@@ -799,7 +948,7 @@ impl App for Files {
         AppKind::Files
     }
     fn size(&self) -> (i32, i32) {
-        (440, 330)
+        (440, 380)
     }
     fn tick(&mut self) -> bool {
         true // directory contents may change from the terminal
@@ -864,22 +1013,23 @@ impl App for About {
         "About Stoa".into()
     }
     fn size(&self) -> (i32, i32) {
-        (440, 320)
+        (440, 340)
     }
     fn draw(&mut self, c: &mut Canvas, r: Rect) {
         c.gradient_v(r.x, r.y, r.w, 120, 0x1E3A7A, 0x4F3F9C);
         c.fill_rect(r.x, r.y + 120, r.w, r.h - 120, 0xFFFFFF);
         draw_logo(c, r.x + 24, r.y + 22, 76, 0xFFFFFF, 255);
         c.text(r.x + 124, r.y + 34, "Stoa", FONT_LARGE, 0xFFFFFF);
-        c.text(r.x + 124, r.y + 66, "Version 0.1 \"Bedrock\"", FONT, 0xD0D8F5);
+        c.text(r.x + 124, r.y + 66, "Version 0.2 \"Agora\"", FONT, 0xD0D8F5);
         let lines = [
             "A hobby operating system built from scratch",
             "in Rust for x86_64.",
             "",
-            "Kernel: GDT/TSS, IDT, PIC + PIT, 4-level paging,",
-            "        heap allocator, PS/2 keyboard & mouse, RTC",
-            "Shell:  compositing window manager, taskbar,",
-            "        start menu and built-in apps",
+            "Kernel: preemptive multitasking, ring-3 processes,",
+            "        ELF loader, system calls, 4-level paging",
+            "Drivers: PCI, ATA disks, e1000 network, PS/2, RTC",
+            "Storage: StoaFS on disk   Network: IPv4, DHCP, ping",
+            "Shell:  window manager, taskbar, start menu, apps",
         ];
         let mut y = r.y + 136;
         for l in lines {

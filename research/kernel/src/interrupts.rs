@@ -66,7 +66,12 @@ pub fn init_idt() {
         unsafe {
             idt.double_fault.set_handler_fn(double_fault).set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
-        idt[IRQ_TIMER].set_handler_fn(timer);
+        unsafe {
+            idt[IRQ_TIMER].set_handler_addr(x86_64::VirtAddr::new(crate::sched::timer_entry as usize as u64));
+            idt[0x80]
+                .set_handler_addr(x86_64::VirtAddr::new(crate::sched::syscall_entry as usize as u64))
+                .set_privilege_level(x86_64::PrivilegeLevel::Ring3);
+        }
         idt[IRQ_KEYBOARD].set_handler_fn(keyboard);
         idt[IRQ_MOUSE].set_handler_fn(mouse);
         idt
@@ -93,10 +98,20 @@ extern "x86-interrupt" fn breakpoint(frame: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn invalid_opcode(frame: InterruptStackFrame) {
+    if from_user(&frame) {
+        crate::sched::kill_faulting_user("invalid instruction");
+    }
     panic!("INVALID OPCODE\n{:#?}", frame);
 }
 
+fn from_user(frame: &InterruptStackFrame) -> bool {
+    frame.code_segment.rpl() == x86_64::PrivilegeLevel::Ring3
+}
+
 extern "x86-interrupt" fn gpf(frame: InterruptStackFrame, code: u64) {
+    if from_user(&frame) {
+        crate::sched::kill_faulting_user("general protection fault");
+    }
     panic!("GENERAL PROTECTION FAULT (code {:#x})\n{:#?}", code, frame);
 }
 
@@ -106,10 +121,14 @@ extern "x86-interrupt" fn double_fault(frame: InterruptStackFrame, _code: u64) -
 
 extern "x86-interrupt" fn page_fault(frame: InterruptStackFrame, code: PageFaultErrorCode) {
     use x86_64::registers::control::Cr2;
+    if from_user(&frame) {
+        crate::sched::kill_faulting_user("page fault");
+    }
     panic!("PAGE FAULT at {:?} ({:?})\n{:#?}", Cr2::read(), code, frame);
 }
 
-extern "x86-interrupt" fn timer(_frame: InterruptStackFrame) {
+/// Timer bookkeeping, called from the scheduler's timer entry stub before it picks the next task.
+pub fn timer_tick() {
     TICKS.fetch_add(1, Ordering::Relaxed);
     unsafe { PICS.lock().notify_end_of_interrupt(IRQ_TIMER) };
 }
