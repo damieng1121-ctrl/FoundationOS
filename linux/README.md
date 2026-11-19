@@ -209,7 +209,12 @@ Sign out and back in to use the new version. The kernel and Ubuntu base update s
 
 ## Installing software
 
-Everything goes through **`fpkg`** (the Stoa Store is a graphical front end to it):
+Everything goes through **`fpkg`** (the Stoa Store is a graphical front end to it). The catalog has 130+
+apps in 13 categories - browsers, Office and Microsoft 365, communication, streaming (Netflix, BBC iPlayer,
+Disney+...), media and creative tools, games and game set-ups, education, cloud storage, development,
+security (password managers, VPN) and utilities (remote help, USB writers, phone link). Searches match
+familiar names too: "photoshop" finds Krita, "teamviewer" finds RustDesk, "airdrop" finds LocalSend. The
+Store shows each app's real icon (from Flathub, or the website's own icon for web apps), cached offline.
 
 ```bash
 stoa search office

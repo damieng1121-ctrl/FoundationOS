@@ -20,7 +20,7 @@ Stoa has three tracks:
 - **Bootable ISO** with a live session and a graphical installer (Calamares): BIOS + UEFI, ext4/btrfs/xfs, full-disk or manual partitioning.
 - **Stoa desktop**: labwc compositor, the Stoa bar and Stoa menu, Stoa Store, Settings, welcome app.
 - **`fpkg`**, one package manager for everything:
-  - `stoa install google-chrome` / `microsoft-365` / `google-drive` / `zoom` / ... (39-app catalog: vendor apt repos, Flathub, web apps)
+  - `stoa install google-chrome` / `microsoft-365` / `google-drive` / `zoom` / ... (130+ app catalog: vendor apt repos, Flathub, web apps, game set-ups)
   - `stoa install setup.exe` / `installer.msi` - Windows programs, each in its own Wine "bottle", added to the menu
   - `stoa pack setup.exe --name "My App" --args /S` - wrap any Windows installer as a `.fpkg` Stoa package
   - `stoa install app.fpkg | file.deb | App.AppImage | flatpak:<id>`

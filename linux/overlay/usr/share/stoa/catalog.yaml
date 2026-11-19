@@ -255,3 +255,201 @@ apps:
      description: "System snapshots and restore."}
   - {id: gparted, name: GParted, category: Utilities, icon: gparted, source: apt, packages: [gparted],
      description: "Disk partition editor."}
+
+  # =================================================================== More apps (v0.3)
+  # ------------------------------------------------------------------ Browsers
+  - {id: brave, name: Brave, category: Browsers, icon: com.brave.Browser, source: flatpak, flatpak: com.brave.Browser,
+     description: "Fast, private browser that blocks ads and trackers."}
+  - {id: vivaldi, name: Vivaldi, category: Browsers, icon: com.vivaldi.Vivaldi, source: flatpak, flatpak: com.vivaldi.Vivaldi,
+     description: "Highly customisable browser with tabs, mail and notes built in."}
+  - {id: chromium, name: Chromium, category: Browsers, icon: org.chromium.Chromium, source: flatpak,
+     flatpak: org.chromium.Chromium, description: "The open-source browser Google Chrome is built on."}
+
+  # ------------------------------------------------------------------ Office & productivity
+  - {id: obsidian, name: Obsidian, category: Office, icon: md.obsidian.Obsidian, source: flatpak, flatpak: md.obsidian.Obsidian,
+     aliases: [notes, markdown], description: "Notes and knowledge base in plain Markdown files."}
+  - {id: joplin, name: Joplin, category: Office, icon: net.cozic.joplin_desktop, source: flatpak,
+     flatpak: net.cozic.joplin_desktop, aliases: [notes, evernote], description: "Notes and to-dos that sync between devices."}
+  - {id: notion, name: Notion, category: Office, icon: accessories-text-editor, source: webapp, url: "https://www.notion.so/",
+     description: "Notes, docs and projects (web app)."}
+  - {id: canva, name: Canva, category: Office, icon: applications-graphics, source: webapp, url: "https://www.canva.com/",
+     aliases: [design, poster, flyer], description: "Design posters, slides and social posts (web app)."}
+  - {id: trello, name: Trello, category: Office, icon: x-office-calendar, source: webapp, url: "https://trello.com/",
+     description: "Boards and cards for projects (web app)."}
+  - {id: calibre, name: Calibre, category: Office, icon: com.calibre_ebook.calibre, source: flatpak,
+     flatpak: com.calibre_ebook.calibre, aliases: [ebook, kindle, epub], description: "E-book library, reader and converter."}
+  - {id: okular, name: Okular, category: Office, icon: org.kde.okular, source: flatpak, flatpak: org.kde.okular,
+     aliases: [pdf, adobe reader, acrobat], description: "Read, annotate and sign PDFs."}
+  - {id: xournalpp, name: Xournal++, category: Office, icon: com.github.xournalpp.xournalpp, source: flatpak,
+     flatpak: com.github.xournalpp.xournalpp, aliases: [pdf edit, handwriting], description: "Handwritten notes and PDF annotation."}
+  - {id: gnucash, name: GnuCash, category: Office, icon: org.gnucash.GnuCash, source: flatpak, flatpak: org.gnucash.GnuCash,
+     aliases: [accounts, finance, quicken], description: "Personal and small-business accounting."}
+
+  # ------------------------------------------------------------------ Communication
+  - {id: telegram, name: Telegram, category: Communication, icon: org.telegram.desktop, source: flatpak,
+     flatpak: org.telegram.desktop, description: "Fast messaging with groups and channels."}
+  - {id: signal, name: Signal, category: Communication, icon: org.signal.Signal, source: flatpak, flatpak: org.signal.Signal,
+     description: "Private, end-to-end encrypted messaging and calls."}
+  - {id: element, name: Element, category: Communication, icon: im.riot.Riot, source: flatpak, flatpak: im.riot.Riot,
+     description: "Secure chat on the open Matrix network."}
+  - {id: messenger, name: Messenger, category: Communication, icon: internet-chat, source: webapp,
+     url: "https://www.messenger.com/", aliases: [facebook], description: "Facebook Messenger (web app)."}
+  - {id: google-meet, name: Google Meet, category: Communication, icon: camera-web, source: webapp,
+     url: "https://meet.google.com/", description: "Video meetings (web app)."}
+  - {id: outlook-calendar, name: Outlook Calendar, category: Communication, icon: x-office-calendar, source: webapp,
+     url: "https://outlook.office.com/calendar/", description: "Your Outlook calendar (web app)."}
+  - {id: google-calendar, name: Google Calendar, category: Communication, icon: x-office-calendar, source: webapp,
+     url: "https://calendar.google.com/", description: "Your Google calendar (web app)."}
+
+  # ------------------------------------------------------------------ Entertainment (streaming)
+  - {id: netflix, name: Netflix, category: Entertainment, icon: video-display, source: webapp, url: "https://www.netflix.com/",
+     description: "Films and series. For full HD, install Google Chrome first."}
+  - {id: youtube, name: YouTube, category: Entertainment, icon: video-display, source: webapp, url: "https://www.youtube.com/",
+     description: "Videos and music videos (web app)."}
+  - {id: bbc-iplayer, name: BBC iPlayer, category: Entertainment, icon: video-display, source: webapp,
+     url: "https://www.bbc.co.uk/iplayer", aliases: [bbc, iplayer], description: "BBC TV live and on demand (UK)."}
+  - {id: itvx, name: ITVX, category: Entertainment, icon: video-display, source: webapp, url: "https://www.itv.com/",
+     aliases: [itv], description: "ITV live and on demand (UK)."}
+  - {id: channel4, name: Channel 4, category: Entertainment, icon: video-display, source: webapp,
+     url: "https://www.channel4.com/", description: "Channel 4 streaming (UK)."}
+  - {id: disney-plus, name: Disney+, category: Entertainment, icon: video-display, source: webapp,
+     url: "https://www.disneyplus.com/", aliases: [disney], description: "Disney, Pixar, Marvel and Star Wars."}
+  - {id: prime-video, name: Prime Video, category: Entertainment, icon: video-display, source: webapp,
+     url: "https://www.primevideo.com/", aliases: [amazon prime], description: "Amazon Prime Video."}
+  - {id: twitch, name: Twitch, category: Entertainment, icon: video-display, source: webapp, url: "https://www.twitch.tv/",
+     description: "Live game streams (web app)."}
+  - {id: plex, name: Plex, category: Entertainment, icon: tv.plex.PlexDesktop, source: flatpak, flatpak: tv.plex.PlexDesktop,
+     description: "Your films, TV and music from a Plex server."}
+  - {id: stremio, name: Stremio, category: Entertainment, icon: com.stremio.Stremio, source: flatpak,
+     flatpak: com.stremio.Stremio, description: "Film and series hub."}
+
+  # ------------------------------------------------------------------ Media & creative
+  - {id: audacity, name: Audacity, category: Media, icon: org.audacityteam.Audacity, source: flatpak,
+     flatpak: org.audacityteam.Audacity, aliases: [audio editor, record], description: "Record and edit audio."}
+  - {id: kdenlive, name: Kdenlive, category: Media, icon: org.kde.kdenlive, source: flatpak, flatpak: org.kde.kdenlive,
+     aliases: [video editor, premiere], description: "Full video editor."}
+  - {id: shotcut, name: Shotcut, category: Media, icon: org.shotcut.Shotcut, source: flatpak, flatpak: org.shotcut.Shotcut,
+     aliases: [video editor], description: "Simple, powerful video editor."}
+  - {id: handbrake, name: HandBrake, category: Media, icon: fr.handbrake.ghb, source: flatpak, flatpak: fr.handbrake.ghb,
+     aliases: [convert video], description: "Convert videos to any format."}
+  - {id: krita, name: Krita, category: Media, icon: org.kde.krita, source: flatpak, flatpak: org.kde.krita,
+     aliases: [drawing, painting, photoshop], description: "Digital painting and illustration."}
+  - {id: blender, name: Blender, category: Media, icon: org.blender.Blender, source: flatpak, flatpak: org.blender.Blender,
+     aliases: [3d], description: "3D modelling, animation and rendering."}
+  - {id: darktable, name: darktable, category: Media, icon: org.darktable.Darktable, source: flatpak,
+     flatpak: org.darktable.Darktable, aliases: [raw, lightroom, photos], description: "Photo editing for RAW photographers."}
+  - {id: shotwell, name: Shotwell, category: Media, icon: org.gnome.Shotwell, source: flatpak, flatpak: org.gnome.Shotwell,
+     aliases: [photos, photo library], description: "Organise and lightly edit your photos."}
+  - {id: freecad, name: FreeCAD, category: Media, icon: org.freecad.FreeCAD, source: flatpak, flatpak: org.freecad.FreeCAD,
+     aliases: [cad, 3d printing], description: "3D CAD for engineering and 3D printing."}
+  - {id: musescore, name: MuseScore, category: Media, icon: org.musescore.MuseScore, source: flatpak,
+     flatpak: org.musescore.MuseScore, aliases: [sheet music, notation], description: "Write and play sheet music."}
+  - {id: shortwave, name: Shortwave, category: Media, icon: de.haeckerfelix.Shortwave, source: flatpak,
+     flatpak: de.haeckerfelix.Shortwave, aliases: [radio], description: "Thousands of internet radio stations."}
+  - {id: amazon-music, name: Amazon Music, category: Media, icon: audio-x-generic, source: webapp,
+     url: "https://music.amazon.co.uk/", description: "Amazon Music (web app)."}
+  - {id: apple-music, name: Apple Music, category: Media, icon: audio-x-generic, source: webapp,
+     url: "https://music.apple.com/", description: "Apple Music in the browser."}
+
+  # ------------------------------------------------------------------ Cloud
+  - {id: dropbox, name: Dropbox, category: Cloud Storage, icon: com.dropbox.Client, source: flatpak, flatpak: com.dropbox.Client,
+     description: "The Dropbox desktop app and sync."}
+  - {id: nextcloud, name: Nextcloud, category: Cloud Storage, icon: com.nextcloud.desktopclient.nextcloud, source: flatpak,
+     flatpak: com.nextcloud.desktopclient.nextcloud, description: "Sync with your own or your company's Nextcloud."}
+  - {id: icloud, name: iCloud, category: Cloud Storage, icon: folder-remote, source: webapp, url: "https://www.icloud.com/",
+     aliases: [apple, iphone photos], description: "iCloud Drive, Photos, Mail and Notes (web app)."}
+  - {id: google-photos, name: Google Photos, category: Cloud Storage, icon: image-x-generic, source: webapp,
+     url: "https://photos.google.com/", description: "Your Google Photos library (web app)."}
+
+  # ------------------------------------------------------------------ Development
+  - {id: github-desktop, name: GitHub Desktop, category: Development, icon: io.github.shiftey.Desktop, source: flatpak,
+     flatpak: io.github.shiftey.Desktop, description: "Git and GitHub without the command line."}
+  - {id: pycharm, name: PyCharm Community, category: Development, icon: com.jetbrains.PyCharm-Community, source: flatpak,
+     flatpak: com.jetbrains.PyCharm-Community, aliases: [python ide], description: "Python IDE by JetBrains."}
+  - {id: android-studio, name: Android Studio, category: Development, icon: com.google.AndroidStudio, source: flatpak,
+     flatpak: com.google.AndroidStudio, description: "Build Android apps."}
+  - {id: godot, name: Godot Engine, category: Development, icon: org.godotengine.Godot, source: flatpak,
+     flatpak: org.godotengine.Godot, aliases: [game engine], description: "Make 2D and 3D games."}
+  - {id: arduino, name: Arduino IDE, category: Development, icon: cc.arduino.IDE2, source: flatpak, flatpak: cc.arduino.IDE2,
+     description: "Program Arduino boards."}
+  - {id: thonny, name: Thonny, category: Development, icon: org.thonny.Thonny, source: flatpak, flatpak: org.thonny.Thonny,
+     aliases: [python beginner], description: "Python for beginners."}
+  - {id: python, name: Python 3, category: Development, icon: text-x-python, source: apt, packages: [python3-pip, python3-venv, idle3],
+     description: "Python with pip, virtual environments and the IDLE editor."}
+  - {id: nodejs, name: Node.js, category: Development, icon: utilities-terminal, source: apt, packages: [nodejs, npm],
+     description: "JavaScript runtime and npm."}
+
+  # ------------------------------------------------------------------ Education
+  - {id: gcompris, name: GCompris, category: Education, icon: org.kde.gcompris, source: flatpak, flatpak: org.kde.gcompris,
+     aliases: [kids], description: "100+ learning games for children aged 2-10."}
+  - {id: tuxpaint, name: Tux Paint, category: Education, icon: org.tuxpaint.Tuxpaint, source: flatpak, flatpak: org.tuxpaint.Tuxpaint,
+     aliases: [kids drawing], description: "Drawing for children."}
+  - {id: geogebra, name: GeoGebra, category: Education, icon: org.geogebra.GeoGebra, source: flatpak,
+     flatpak: org.geogebra.GeoGebra, aliases: [maths, graphs], description: "Maths: graphing, geometry, algebra."}
+  - {id: stellarium, name: Stellarium, category: Education, icon: org.stellarium.Stellarium, source: flatpak,
+     flatpak: org.stellarium.Stellarium, aliases: [stars, astronomy, planetarium], description: "A planetarium for your PC."}
+  - {id: anki, name: Anki, category: Education, icon: net.ankiweb.Anki, source: flatpak, flatpak: net.ankiweb.Anki,
+     aliases: [flashcards, revision], description: "Flashcards that help you remember."}
+  - {id: scratch, name: Scratch, category: Education, icon: applications-education, source: webapp,
+     url: "https://scratch.mit.edu/projects/editor/", aliases: [coding for kids], description: "Learn to code with blocks (web app)."}
+  - {id: duolingo, name: Duolingo, category: Education, icon: applications-education, source: webapp,
+     url: "https://www.duolingo.com/", aliases: [languages], description: "Learn a language (web app)."}
+  - {id: bbc-bitesize, name: BBC Bitesize, category: Education, icon: applications-education, source: webapp,
+     url: "https://www.bbc.co.uk/bitesize", aliases: [gcse, homework], description: "UK curriculum revision (web app)."}
+
+  # ------------------------------------------------------------------ Security & privacy
+  - {id: bitwarden, name: Bitwarden, category: Security, icon: com.bitwarden.desktop, source: flatpak,
+     flatpak: com.bitwarden.desktop, aliases: [passwords, password manager], description: "Password manager that syncs everywhere."}
+  - {id: keepassxc, name: KeePassXC, category: Security, icon: org.keepassxc.KeePassXC, source: flatpak,
+     flatpak: org.keepassxc.KeePassXC, aliases: [passwords, password manager], description: "Offline password manager."}
+  - {id: proton-vpn, name: Proton VPN, category: Security, icon: com.protonvpn.www, source: flatpak, flatpak: com.protonvpn.www,
+     aliases: [vpn], description: "Free, private VPN from Switzerland."}
+  - {id: proton-mail, name: Proton Mail, category: Security, icon: internet-mail, source: webapp, url: "https://mail.proton.me/",
+     description: "Encrypted email (web app)."}
+  - {id: flatseal, name: Flatseal, category: Security, icon: com.github.tchx84.Flatseal, source: flatpak,
+     flatpak: com.github.tchx84.Flatseal, aliases: [permissions], description: "Review and change what Store apps can access."}
+
+  # ------------------------------------------------------------------ Utilities
+  - {id: anydesk, name: AnyDesk, category: Utilities, icon: com.anydesk.Anydesk, source: flatpak, flatpak: com.anydesk.Anydesk,
+     aliases: [remote desktop, remote help], description: "Remote desktop and remote support."}
+  - {id: rustdesk, name: RustDesk, category: Utilities, icon: com.rustdesk.RustDesk, source: flatpak, flatpak: com.rustdesk.RustDesk,
+     aliases: [remote desktop, teamviewer], description: "Open-source remote desktop and support."}
+  - {id: remmina, name: Remmina, category: Utilities, icon: org.remmina.Remmina, source: flatpak, flatpak: org.remmina.Remmina,
+     aliases: [rdp, remote desktop, vnc], description: "Connect to Windows PCs (RDP) and servers."}
+  - {id: qbittorrent, name: qBittorrent, category: Utilities, icon: org.qbittorrent.qBittorrent, source: flatpak,
+     flatpak: org.qbittorrent.qBittorrent, aliases: [torrent], description: "Torrent client."}
+  - {id: mission-center, name: Mission Center, category: Utilities, icon: io.missioncenter.MissionCenter, source: flatpak,
+     flatpak: io.missioncenter.MissionCenter, aliases: [task manager], description: "Task Manager-style CPU, memory, disk and GPU monitor."}
+  - {id: bleachbit, name: BleachBit, category: Utilities, icon: org.bleachbit.BleachBit, source: flatpak,
+     flatpak: org.bleachbit.BleachBit, aliases: [ccleaner, clean up], description: "Free up disk space and clear traces."}
+  - {id: impression, name: Impression, category: Utilities, icon: io.gitlab.adhami3310.Impression, source: flatpak,
+     flatpak: io.gitlab.adhami3310.Impression, aliases: [usb, iso, bootable, rufus, etcher], description: "Write ISO images to USB sticks."}
+  - {id: rpi-imager, name: Raspberry Pi Imager, category: Utilities, icon: org.raspberrypi.rpi-imager, source: flatpak,
+     flatpak: org.raspberrypi.rpi-imager, description: "Set up SD cards for a Raspberry Pi."}
+  - {id: localsend, name: LocalSend, category: Utilities, icon: org.localsend.localsend_app, source: flatpak,
+     flatpak: org.localsend.localsend_app, aliases: [airdrop, nearby share, send to phone], description: "Send files to phones and PCs nearby."}
+  - {id: kdeconnect, name: KDE Connect, category: Utilities, icon: org.kde.kdeconnect, source: apt, packages: [kdeconnect],
+     aliases: [phone link], description: "Link your phone: files, texts, notifications, clipboard."}
+  - {id: syncthing, name: Syncthing, category: Utilities, icon: com.github.zocker_160.SyncThingy, source: flatpak,
+     flatpak: com.github.zocker_160.SyncThingy, description: "Sync folders between your devices, privately."}
+
+  # ------------------------------------------------------------------ Games
+  - {id: itch, name: itch, category: Games, icon: io.itch.itch, source: flatpak, flatpak: io.itch.itch,
+     description: "Indie games from itch.io."}
+  - {id: luanti, name: Luanti, category: Games, icon: net.minetest.Minetest, source: flatpak, flatpak: net.minetest.Minetest,
+     aliases: [minetest, minecraft-like], description: "Block-building sandbox game (formerly Minetest)."}
+  - {id: supertuxkart, name: SuperTuxKart, category: Games, icon: net.supertuxkart.SuperTuxKart, source: flatpak,
+     flatpak: net.supertuxkart.SuperTuxKart, aliases: [kart racing], description: "Kart racing, online too."}
+  - {id: zeroad, name: 0 A.D., category: Games, icon: com.play0ad.zeroad, source: flatpak, flatpak: com.play0ad.zeroad,
+     aliases: [strategy, age of empires], description: "Historical real-time strategy."}
+  - {id: wesnoth, name: Battle for Wesnoth, category: Games, icon: org.wesnoth.Wesnoth, source: flatpak,
+     flatpak: org.wesnoth.Wesnoth, aliases: [strategy], description: "Turn-based fantasy strategy."}
+  - {id: dolphin-emu, name: Dolphin, category: Games, icon: org.DolphinEmu.dolphin-emu, source: flatpak,
+     flatpak: org.DolphinEmu.dolphin-emu, aliases: [gamecube, wii emulator], description: "GameCube and Wii emulator."}
+  - {id: ppsspp, name: PPSSPP, category: Games, icon: org.ppsspp.PPSSPP, source: flatpak, flatpak: org.ppsspp.PPSSPP,
+     aliases: [psp emulator], description: "PSP emulator."}
+  - {id: geforce-now, name: GeForce NOW, category: Games, icon: applications-games, source: webapp,
+     url: "https://play.geforcenow.com/", aliases: [cloud gaming, fortnite],
+     description: "Cloud gaming - plays big Windows games (including some anti-cheat ones) on any PC. Needs Chrome."}
+  - {id: xbox-cloud, name: Xbox Cloud Gaming, category: Games, icon: applications-games, source: webapp,
+     url: "https://www.xbox.com/play", aliases: [game pass, cloud gaming], description: "Game Pass games streamed from the cloud. Needs Chrome or Edge."}

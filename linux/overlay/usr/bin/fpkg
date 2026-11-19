@@ -18,6 +18,7 @@ import os
 import re
 import shlex
 import shutil
+import urllib.parse
 import subprocess
 import sys
 import tarfile
@@ -186,12 +187,34 @@ def install_flatpak(ref, name=None):
     ok(f"{name or ref} installed")
 
 
+def webapp_icon(app):
+    """The site's own icon for a web app's launcher (cached by the Store, or fetched now); else the catalog icon."""
+    host = urllib.parse.urlparse(app["url"]).hostname or ""
+    cache = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.join(HOME, ".cache")), "stoa", "store-icons",
+                         host + ".ico")
+    dest = os.path.join(HOME, ".local/share/stoa/webapp-icons", app["id"] + ".ico")
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        if os.path.exists(cache):
+            shutil.copyfile(cache, dest)
+        else:
+            req = urllib.request.Request(f"https://icons.duckduckgo.com/ip3/{host}.ico",
+                                         headers={"User-Agent": "Stoa"})
+            with urllib.request.urlopen(req, timeout=8) as r, open(dest, "wb") as f:
+                f.write(r.read(512 * 1024))
+        if os.path.getsize(dest) > 200:
+            return dest
+    except OSError:
+        pass
+    return app.get("icon", "web-browser")
+
+
 def install_webapp(app):
     write_desktop(
         f"fpkg-webapp-{app['id']}",
         app["name"],
         f"stoa-webapp {app['id']} {app['url']}",
-        icon=app.get("icon", "web-browser"),
+        icon=webapp_icon(app),
         comment=app.get("description", ""),
         extra=f"Categories={app.get('desktop_category', 'Network')};\nStartupWMClass=fpkg-{app['id']}\n",
     )
