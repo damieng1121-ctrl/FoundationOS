@@ -62,7 +62,7 @@ find "$STAGE/usr/lib/stoa/vendor" -name "__pycache__" -prune -exec rm -rf {} +
 
 chmod 0755 "$STAGE"/usr/bin/fpkg "$STAGE"/usr/bin/stoa-* "$STAGE"/usr/lib/stoa/fpkg-helper \
   "$STAGE"/usr/lib/stoa/install-bootloader-pkg "$STAGE"/usr/lib/stoa/select-session \
-  "$STAGE"/usr/lib/stoa/app-names "$STAGE"/usr/lib/stoa/security-helper
+  "$STAGE"/usr/lib/stoa/app-names "$STAGE"/usr/lib/stoa/security-helper "$STAGE"/usr/lib/stoa/users-helper
 [[ -d "$STAGE/etc/sudoers.d" ]] && find "$STAGE/etc/sudoers.d" -type f -exec chmod 0440 {} +
 
 mkdir -p "$STAGE/DEBIAN"

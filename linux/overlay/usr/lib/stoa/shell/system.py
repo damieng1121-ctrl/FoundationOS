@@ -167,6 +167,8 @@ def battery_icon():
 def power(action):
     cmds = {
         "lock": ["stoa-lock"],
+        # Back to the sign-in screen with this session kept running, so someone else can sign in.
+        "switchuser": ["dm-tool", "switch-to-greeter"],
         "sleep": ["systemctl", "suspend"],
         "signout": ["labwc", "--exit"],
         "restart": ["systemctl", "reboot"],

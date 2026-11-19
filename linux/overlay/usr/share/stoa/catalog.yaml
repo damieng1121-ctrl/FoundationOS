@@ -464,3 +464,17 @@ apps:
     description: >-
       Stoa AI running entirely on this PC - private, no account or key, works offline. Downloads the best
       open model for your memory and graphics card (1.3-5 GB).
+
+  # ------------------------------------------------------------------ Gaming hardware
+  - id: razer
+    name: Razer devices
+    category: Utilities
+    icon: input-keyboard
+    source: razer
+    aliases: [razer synapse, synapse, razer chroma, chroma, keyboard lighting, mouse dpi, razer keyboard, razer mouse]
+    description: >-
+      Lighting effects, per-key colours, DPI, polling rate and battery for Razer keyboards, mice and headsets
+      (OpenRazer driver + Polychromatic). Razer Synapse itself only runs on Windows.
+  - {id: openrgb, name: OpenRGB, category: Utilities, icon: org.openrgb.OpenRGB, source: flatpak,
+     flatpak: org.openrgb.OpenRGB, aliases: [rgb, lighting, icue, corsair, g hub, logitech, steelseries, armoury crate],
+     description: "One app for RGB lighting on keyboards, mice, RAM, fans and motherboards of most brands."}

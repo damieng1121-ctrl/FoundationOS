@@ -206,6 +206,30 @@ graphics libraries, GameMode and a higher `vm.max_map_count` (needed by some gam
   once from Steam first; afterwards set the game's Steam compatibility tool to the "MO2" one.
 - Code: `overlay/usr/bin/stoa-game-setup`.
 
+## Razer and other gaming hardware
+
+- **Razer Synapse can't run on Stoa** (or any Linux): it relies on Razer's Windows drivers and services.
+  Trying to install it shows an explanation instead of a confusing failure.
+- **Store → Razer devices** (`stoa install razer`) installs **OpenRazer** (the open-source Razer driver,
+  built for the running kernel with DKMS - verified against the Stoa 7.0 kernel: keyboards, mice, Kraken
+  headsets, accessories) and **Polychromatic** (from its developers' PPA): lighting effects, per-key colours,
+  brightness, DPI, polling rate and battery. Synapse profiles can't be imported - recreate the effect in
+  Polychromatic once. **OpenRGB** (also in the Store) covers mixed brands (Corsair, Logitech, SteelSeries,
+  motherboards, RAM).
+- **No more freezing:** Razer devices (USB vendor 1532) are kept out of USB power saving
+  (`/usr/lib/udev/rules.d/70-stoa-razer.rules`), the usual cause of a Razer keyboard or mouse freezing on
+  Linux, and lighting apps can reach them without administrator rights. If an 8000 Hz "HyperPolling" mouse
+  still stutters, set it to 1000 Hz in Polychromatic. Stoa AI's troubleshooting checks the kernel log for
+  USB disconnects and resets.
+
+## Accounts
+
+**Settings → Accounts** (or the account button in the Stoa menu): add people with a standard or
+administrator account, change passwords, make someone an administrator, remove an account (keeping or
+deleting their files) and turn on automatic sign-in. Everyone gets their own files, settings and apps. The
+power menu has **Switch user**, which leaves your apps running while someone else signs in. Stoa always keeps at
+least one administrator, and you can't remove or demote yourself.
+
 ## Printing and scanning
 
 Printers on your network (Wi-Fi/Ethernet) and most USB printers appear automatically - modern printers

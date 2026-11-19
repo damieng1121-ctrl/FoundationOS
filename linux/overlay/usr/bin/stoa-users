@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Stoa Accounts: the people who use this PC - add, remove, passwords, administrators, automatic sign-in."""
+import grp
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, "/usr/lib/stoa")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+import stoa_ui as ui  # noqa: E402
+
+HELPER = "/usr/lib/stoa/users-helper"
+AUTOLOGIN = "/etc/lightdm/lightdm.conf.d/60-stoa-autologin.conf"
+COLOURS = ["#4f8cff", "#7a4fe0", "#3fb37f", "#e0567a", "#f0a030", "#18a0c9"]
+
+
+def people():
+    out = []
+    try:
+        admins = set(grp.getgrnam("sudo").gr_mem)
+    except KeyError:
+        admins = set()
+    for u in pwd.getpwall():
+        if (1000 <= u.pw_uid < 60000 and u.pw_shell not in ("/usr/sbin/nologin", "/bin/false")
+                and u.pw_dir.startswith("/home/")):  # real people, as the sign-in screen lists them
+            out.append({"name": u.pw_name, "full": u.pw_gecos.split(",")[0] or u.pw_name,
+                        "admin": u.pw_name in admins, "uid": u.pw_uid})
+    return sorted(out, key=lambda p: p["uid"])
+
+
+def autologin_user():
+    try:
+        with open(AUTOLOGIN) as f:
+            m = re.search(r"^autologin-user=(\S+)", f.read(), re.M)
+            return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def helper(*args, stdin=None):
+    cmd = ["pkexec", HELPER, *args] if shutil.which("pkexec") else ["sudo", HELPER, *args]
+    return subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+
+
+class Accounts(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Accounts")
+        self.set_default_size(*ui.fit_size(560, 560))
+        self.set_icon_name("system-users")
+        self.connect("destroy", Gtk.main_quit)
+        self.me = pwd.getpwuid(os.getuid()).pw_name
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(18)
+        self.add(box)
+        head = Gtk.Box(spacing=12)
+        title = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        title.pack_start(ui.css(Gtk.Label(label="Accounts", xalign=0), "f-title"), False, False, 0)
+        title.pack_start(ui.css(Gtk.Label(label="Everyone who uses this PC gets their own files, settings and apps.",
+                                          xalign=0, wrap=True), "f-muted"), False, False, 0)
+        head.pack_start(title, True, True, 0)
+        add = ui.css(Gtk.Button(label="Add account", valign=Gtk.Align.CENTER), "f-primary")
+        add.connect("clicked", self.add_dialog)
+        head.pack_end(add, False, False, 0)
+        box.pack_start(head, False, False, 0)
+        sw = Gtk.ScrolledWindow(vexpand=True)
+        sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        sw.add(self.list)
+        box.pack_start(sw, True, True, 0)
+        self.refresh()
+
+    def error(self, text):
+        d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR,
+                              buttons=Gtk.ButtonsType.OK, text=text)
+        d.run()
+        d.destroy()
+
+    def done(self, r, ok_text=None):
+        if r.returncode == 126:  # authentication cancelled
+            return False
+        if r.returncode:
+            self.error((r.stderr or r.stdout).strip() or "That didn't work.")
+            return False
+        self.refresh()
+        return True
+
+    def refresh(self):
+        for c in self.list.get_children():
+            c.destroy()
+        auto = autologin_user()
+        for i, p in enumerate(people()):
+            card = ui.css(Gtk.Box(spacing=12), "f-card")
+            avatar = Gtk.Label()
+            avatar.set_markup(f"<span size='x-large' weight='bold' foreground='white'>{p['full'][:1].upper()}</span>")
+            av = Gtk.EventBox()
+            av.add(avatar)
+            av.set_size_request(48, 48)
+            prov = Gtk.CssProvider()
+            prov.load_from_data(f"* {{ background-color: {COLOURS[i % len(COLOURS)]}; border-radius: 24px; }}".encode())
+            av.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            card.pack_start(av, False, False, 0)
+            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            name = p["full"] + ("  (you)" if p["name"] == self.me else "")
+            info.pack_start(ui.css(Gtk.Label(label=name, xalign=0), "f-h2"), False, False, 0)
+            tags = [p["name"], "Administrator" if p["admin"] else "Standard account"]
+            if auto == p["name"]:
+                tags.append("signs in automatically")
+            info.pack_start(ui.css(Gtk.Label(label=" · ".join(tags), xalign=0), "f-muted"), False, False, 0)
+            card.pack_start(info, True, True, 0)
+            menu_btn = ui.css(Gtk.MenuButton(label="Manage", valign=Gtk.Align.CENTER), "f-ghost")
+            menu = Gtk.Menu()
+            items = [("Change password…", lambda _i, p=p: self.password_dialog(p))]
+            if p["name"] != self.me:
+                items.append(("Remove administrator rights" if p["admin"] else "Make administrator",
+                              lambda _i, p=p: self.done(helper("admin", p["name"], "no" if p["admin"] else "yes"))))
+            items.append(("Don't sign in automatically" if auto == p["name"] else "Sign in automatically at start-up",
+                          lambda _i, p=p: self.done(helper("autologin", "off" if auto == p["name"] else p["name"]))))
+            if p["name"] != self.me:
+                items.append(("Remove account…", lambda _i, p=p: self.remove_dialog(p)))
+            for label, fn in items:
+                it = Gtk.MenuItem(label=label)
+                it.connect("activate", fn)
+                menu.append(it)
+            menu.show_all()
+            menu_btn.set_popup(menu)
+            card.pack_end(menu_btn, False, False, 0)
+            self.list.pack_start(card, False, False, 0)
+        self.list.show_all()
+
+    def _form(self, title, ok_label):
+        d = Gtk.Dialog(title=title, transient_for=self, modal=True)
+        d.set_default_size(380, -1)
+        area = d.get_content_area()
+        area.set_border_width(16)
+        area.set_spacing(8)
+        d.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        ok = d.add_button(ok_label, Gtk.ResponseType.OK)
+        ok.get_style_context().add_class("f-primary")
+        d.set_default_response(Gtk.ResponseType.OK)
+        return d, area
+
+    def add_dialog(self, *_):
+        d, area = self._form("Add account", "Add account")
+        full = Gtk.Entry(placeholder_text="Their name, e.g. Sam Jones")
+        user = Gtk.Entry(placeholder_text="Username, e.g. sam")
+        pw1 = Gtk.Entry(placeholder_text="Password", visibility=False)
+        pw2 = Gtk.Entry(placeholder_text="Type the password again", visibility=False, activates_default=True)
+        kind = Gtk.ComboBoxText()
+        kind.append("standard", "Standard - can use apps and change their own settings")
+        kind.append("admin", "Administrator - can also install software and change the system")
+        kind.set_active_id("standard")
+
+        user.edited = False
+
+        def suggest(*_):
+            if not user.edited:
+                user.set_text(re.sub(r"[^a-z0-9]", "", full.get_text().split(" ")[0].lower())[:20])
+        full.connect("changed", suggest)
+        user.connect("key-press-event", lambda *_: setattr(user, "edited", True) or False)
+        for w in (full, user, pw1, pw2, kind):
+            area.pack_start(w, False, False, 0)
+        msg = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+        area.pack_start(msg, False, False, 0)
+        d.show_all()
+        while d.run() == Gtk.ResponseType.OK:
+            if not full.get_text().strip() or not user.get_text().strip():
+                msg.set_text("Fill in a name and a username.")
+                continue
+            if pw1.get_text() != pw2.get_text():
+                msg.set_text("The passwords don't match.")
+                continue
+            r = helper("add", user.get_text().strip(), full.get_text().strip(), kind.get_active_id(),
+                       stdin=pw1.get_text() + "\n")
+            if r.returncode == 126:
+                continue
+            if r.returncode:
+                msg.set_text((r.stderr or r.stdout).strip())
+                continue
+            self.refresh()
+            break
+        d.destroy()
+
+    def password_dialog(self, p):
+        if p["name"] == self.me:
+            # Your own password: the normal way, which checks your current password.
+            ui.spawn("foot", "--title", "Change password", "sh", "-c",
+                     "echo 'Change your Stoa password'; echo; passwd; echo; echo 'Press Enter to close'; read _")
+            return
+        d, area = self._form(f"New password for {p['full']}", "Change password")
+        pw1 = Gtk.Entry(placeholder_text="New password", visibility=False)
+        pw2 = Gtk.Entry(placeholder_text="Type it again", visibility=False, activates_default=True)
+        msg = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+        for w in (pw1, pw2, msg):
+            area.pack_start(w, False, False, 0)
+        d.show_all()
+        while d.run() == Gtk.ResponseType.OK:
+            if pw1.get_text() != pw2.get_text():
+                msg.set_text("The passwords don't match.")
+                continue
+            if self.done(helper("password", p["name"], stdin=pw1.get_text() + "\n")):
+                break
+        d.destroy()
+
+    def remove_dialog(self, p):
+        d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                              text=f"Remove {p['full']}'s account?")
+        d.format_secondary_text("You can keep their files (documents, photos, downloads) in /home or delete "
+                                "them for good.")
+        d.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        d.add_button("Keep their files", 1)
+        delete = d.add_button("Delete everything", 2)
+        delete.get_style_context().add_class("f-danger")
+        r = d.run()
+        d.destroy()
+        if r in (1, 2):
+            self.done(helper("remove", p["name"], "keep" if r == 1 else "delete"))
+
+
+def main():
+    ui.apply_css()
+    Accounts().show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

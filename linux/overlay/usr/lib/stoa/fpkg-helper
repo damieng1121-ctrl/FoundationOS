@@ -55,21 +55,56 @@ def repo_add(app_id):
     sh(["apt-get", "update"])
 
 
+def kernel_headers():
+    """Headers (and DKMS) for the running kernel, so drivers can be built for it. True if available."""
+    release = os.uname().release
+    if os.path.isdir(f"/lib/modules/{release}/build"):
+        sh(APT + ["install", "dkms"])
+        return True
+    if "stoa" in release:
+        import glob
+        debs = sorted(glob.glob(f"/usr/share/stoa/kernel/linux-headers-{release}_*.deb"))
+        if debs:
+            sh(APT + ["install", "dkms", debs[-1]])
+            return True
+        return False
+    return subprocess.run(APT + ["install", "dkms", f"linux-headers-{release}"], env=ENV).returncode == 0
+
+
+def install_razer():
+    """Razer keyboards, mice and headsets: OpenRazer (driver + daemon) and Polychromatic (the settings app)."""
+    sh(["apt-get", "update"])
+    if not kernel_headers():
+        sys.exit(f"Can't build the Razer driver for this kernel ({os.uname().release}): its headers aren't "
+                 "available. Restart into the Ubuntu kernel (Advanced options at boot) and try again.")
+    sh(APT + ["install", "openrazer-meta"])  # driver (built with DKMS), daemon, Python library
+    # Polychromatic, the Razer settings app, comes from its developers' Ubuntu PPA.
+    r = subprocess.run(["add-apt-repository", "-y", "ppa:polychromatic/stable"], env=ENV)
+    if r.returncode == 0 and subprocess.run(APT + ["install", "polychromatic"], env=ENV).returncode == 0:
+        print("Polychromatic installed.", flush=True)
+    else:
+        print("note: Polychromatic couldn't be added; use OpenRGB from the Stoa Store for lighting.", flush=True)
+    # The OpenRazer daemon runs in each person's session; start it for every account, now and future ones.
+    subprocess.run(["systemctl", "--global", "enable", "openrazer-daemon.service"], env=ENV)
+    # Load the drivers now and re-bind devices that are already plugged in (no need to replug).
+    for mod in ("razerkbd", "razermouse", "razerkraken", "razeraccessory"):
+        subprocess.run(["modprobe", mod], env=ENV, capture_output=True)
+    subprocess.run(["udevadm", "trigger", "--subsystem-match=hid", "--action=add"], env=ENV)
+    uid = os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID")
+    if uid:
+        import pwd
+        user = pwd.getpwuid(int(uid)).pw_name
+        subprocess.run(["usermod", "-aG", "plugdev", user], env=ENV)
+
+
 def install_drivers():
     """Recommended graphics (and other) drivers via ubuntu-drivers. NVIDIA's driver is built for the
     running kernel with DKMS, so the Stoa kernel's headers (shipped in /usr/share/stoa/kernel) go first."""
     sh(["apt-get", "update"])
     sh(APT + ["install", "ubuntu-drivers-common"])
-    release = os.uname().release
-    if "stoa" in release:
-        import glob
-        if not os.path.isdir(f"/usr/src/linux-headers-{release}"):
-            debs = sorted(glob.glob(f"/usr/share/stoa/kernel/linux-headers-{release}_*.deb"))
-            if debs:
-                sh(APT + ["install", "dkms", debs[-1]])
-            else:
-                print(f"note: no headers for {release}; NVIDIA's driver will work after restarting into "
-                      "the Ubuntu kernel (Advanced options at boot)", flush=True)
+    if not kernel_headers():
+        print(f"note: no headers for {os.uname().release}; NVIDIA's driver will work after restarting into "
+              "the Ubuntu kernel (Advanced options at boot)", flush=True)
     r = subprocess.run(["ubuntu-drivers", "list"], env=ENV, capture_output=True, text=True)
     print(r.stdout.strip() or "No extra drivers are needed for this computer.", flush=True)
     if r.stdout.strip():
@@ -104,6 +139,8 @@ def main():
             subprocess.run(["flatpak", "update", "--system", "-y", "--noninteractive"], env=ENV)
     elif op == "drivers":
         install_drivers()
+    elif op == "razer":
+        install_razer()
     elif op == "refresh":
         sh(["apt-get", "update"])
     else:

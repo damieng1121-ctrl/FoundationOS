@@ -70,7 +70,7 @@ class Shell(Gtk.Application):
 
     def power_menu(self, widget):
         m = Gtk.Menu()
-        for label, act in [("Lock", "lock"), ("Sleep", "sleep"), ("Sign out", "signout"),
+        for label, act in [("Lock", "lock"), ("Switch user", "switchuser"), ("Sleep", "sleep"), ("Sign out", "signout"),
                            ("Restart", "restart"), ("Shut down", "shutdown")]:
             it = Gtk.MenuItem(label=label)
             it.connect("activate", lambda _i, a=act: system.power(a))

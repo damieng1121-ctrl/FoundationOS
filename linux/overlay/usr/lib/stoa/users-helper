@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Privileged half of Stoa's Accounts settings. Runs as root via pkexec and only does these things:
+
+  add USER "Full Name" standard|admin     create an account (password on stdin)
+  remove USER keep|delete                 remove an account, keeping or deleting its files
+  password USER                           set a password (new password on stdin)
+  admin USER yes|no                       make an account an administrator or not
+  autologin USER|off                      sign this account in automatically at start-up (or not)
+
+Usernames are checked strictly; the account running Stoa can't remove or demote itself.
+"""
+import os
+import pwd
+import re
+import subprocess
+import sys
+
+ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
+NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
+RESERVED = {"root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy",
+            "www-data", "backup", "list", "irc", "nobody", "admin", "sudo", "stoa", "lightdm"}
+# The same groups the installer gives the first account (sound, video, printers, removable drives...).
+STANDARD_GROUPS = ["audio", "video", "plugdev", "netdev", "lpadmin", "bluetooth", "render", "input"]
+AUTOLOGIN = "/etc/lightdm/lightdm.conf.d/60-stoa-autologin.conf"
+
+
+def run(cmd, **kw):
+    r = subprocess.run(cmd, env=ENV, capture_output=True, text=True, **kw)
+    if r.returncode:
+        sys.exit((r.stderr or r.stdout).strip() or f"{cmd[0]} failed")
+    return r
+
+
+def human_user(name):
+    try:
+        u = pwd.getpwnam(name)
+    except KeyError:
+        sys.exit(f"There's no account called {name}.")
+    if u.pw_uid < 1000 or u.pw_uid >= 60000:
+        sys.exit(f"{name} is a system account.")
+    return u
+
+
+def caller():
+    uid = int(os.environ.get("PKEXEC_UID", os.environ.get("SUDO_UID", "-1")))
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return None
+
+
+def existing_groups(names):
+    out = []
+    for g in names:
+        if subprocess.run(["getent", "group", g], env=ENV, capture_output=True).returncode == 0:
+            out.append(g)
+    return out
+
+
+def main():
+    if os.geteuid() != 0:
+        sys.exit("users-helper must run as root")
+    a = sys.argv[1:]
+    op = a[0] if a else ""
+    if op == "add" and len(a) == 4:
+        name, full, kind = a[1], a[2], a[3]
+        if name in RESERVED:
+            sys.exit(f"The username {name} is reserved by the system. Choose another.")
+        if not NAME_RE.match(name):
+            sys.exit("Choose a username with lower-case letters and numbers (it can't start with a number).")
+        if subprocess.run(["id", name], env=ENV, capture_output=True).returncode == 0:
+            sys.exit(f"The username {name} is already taken.")
+        if any(c in full for c in ":,\n"):
+            sys.exit("The full name can't contain : or ,")
+        password = sys.stdin.readline().rstrip("\n")
+        if len(password) < 4:
+            sys.exit("Choose a password of at least 4 characters.")
+        groups = existing_groups(STANDARD_GROUPS + (["sudo", "adm"] if kind == "admin" else []))
+        run(["useradd", "--create-home", "--shell", "/bin/bash", "--comment", full, "--groups", ",".join(groups),
+             name])
+        run(["chpasswd"], input=f"{name}:{password}\n")
+        print(f"Created {name}.")
+    elif op == "remove" and len(a) == 3:
+        u = human_user(a[1])
+        if a[1] == caller():
+            sys.exit("You can't remove the account you're signed in to.")
+        if subprocess.run(["pgrep", "-u", a[1]], env=ENV, capture_output=True).returncode == 0:
+            sys.exit(f"{a[1]} is signed in. Ask them to sign out first.")
+        run(["userdel"] + (["--remove"] if a[2] == "delete" else []) + [u.pw_name])
+        print(f"Removed {a[1]}.")
+    elif op == "password" and len(a) == 2:
+        u = human_user(a[1])
+        password = sys.stdin.readline().rstrip("\n")
+        if len(password) < 4:
+            sys.exit("Choose a password of at least 4 characters.")
+        run(["chpasswd"], input=f"{u.pw_name}:{password}\n")
+        print("Password changed.")
+    elif op == "admin" and len(a) == 3 and a[2] in ("yes", "no"):
+        u = human_user(a[1])
+        if a[2] == "yes":
+            run(["usermod", "-aG", "sudo,adm", u.pw_name])
+        else:
+            if a[1] == caller():
+                sys.exit("You can't remove your own administrator rights.")
+            admins = [m for m in run(["getent", "group", "sudo"]).stdout.strip().split(":")[-1].split(",") if m]
+            if admins == [a[1]]:
+                sys.exit("Stoa needs at least one administrator.")
+            run(["gpasswd", "-d", u.pw_name, "sudo"])
+        print("Done.")
+    elif op == "autologin" and len(a) == 2:
+        if a[1] == "off":
+            if os.path.exists(AUTOLOGIN):
+                os.remove(AUTOLOGIN)
+        else:
+            u = human_user(a[1])
+            os.makedirs(os.path.dirname(AUTOLOGIN), exist_ok=True)
+            with open(AUTOLOGIN, "w") as f:
+                f.write(f"[Seat:*]\nautologin-user={u.pw_name}\nautologin-user-timeout=0\n")
+            run(["groupadd", "-f", "autologin"])
+            run(["usermod", "-aG", "autologin", u.pw_name])
+        print("Done.")
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

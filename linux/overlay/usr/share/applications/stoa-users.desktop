@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Accounts
+Comment=Add people, change passwords and administrators
+Exec=stoa-users
+Icon=system-users
+Categories=Settings;System;
+Keywords=user;users;account;accounts;password;administrator;family;

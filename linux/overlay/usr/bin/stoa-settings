@@ -96,6 +96,7 @@ TILES = [
     ("Network & Wi-Fi", "network-wireless", ["nm-connection-editor"]),
     ("Sound", "audio-volume-high", ["pavucontrol"]),
     ("Security", "security-high", ["stoa-protect"]),
+    ("Accounts", "system-users", ["stoa-users"]),
     ("Bluetooth", "bluetooth", ["blueman-manager"]),
     ("Printers", "printer", ["system-config-printer"]),
     ("Scanner", "scanner", ["simple-scan"]),
@@ -120,9 +121,7 @@ def main():
         pick_wallpaper(None)
         return
     if len(sys.argv) > 1 and sys.argv[1] == "accounts":
-        ui.spawn("foot", "--title", "Change password", "sh", "-c",
-                 "echo 'Change your Stoa password'; echo; passwd; echo; echo 'Press Enter to close'; read _")
-        return
+        os.execvp("stoa-users", ["stoa-users"])
     win = Gtk.Window(title="Stoa Settings")
     win.set_default_size(*ui.fit_size(640, 460))
     win.set_icon_name("stoa")

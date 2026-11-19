@@ -322,6 +322,10 @@ def find_exes(bottle):
 def install_windows(installer, app_id=None, name=None, args=None, exec_path=None, verbs=(), arch="win64",
                     icon=None, version=None, portable=False, extra_state=None):
     malware_check(installer)
+    if re.search(r"synapse|razer.?central|razerinstaller", os.path.basename(installer), re.I):
+        die("Razer Synapse needs Razer's Windows drivers, so it can't run on Stoa (or any Linux). "
+            "Install 'Razer devices' instead - stoa install razer - for lighting, DPI, polling rate and "
+            "battery on Razer keyboards, mice and headsets.")
     installer = os.path.abspath(installer)
     name = name or os.path.splitext(os.path.basename(installer))[0]
     app_id = app_id or slug(name)
@@ -590,6 +594,12 @@ def install_target(target, assume_yes=False):
     elif src == "setup":
         run(["stoa-game-setup", app["setup"]])
         record(app["id"], source="setup", name=app["name"], setup=app["setup"])
+    elif src == "razer":
+        root_helper("razer")
+        if have("systemctl"):
+            run(["systemctl", "--user", "start", "openrazer-daemon.service"], check=False)
+        record(app["id"], source="razer", name=app["name"])
+        ok("Razer support is ready. Open Polychromatic from the Stoa menu to set lighting, DPI and polling rate.")
     elif src == "drivers":
         root_helper("drivers")
         record(app["id"], source="drivers", name=app["name"])
@@ -635,6 +645,8 @@ def remove(name):
             os.remove(p)
     elif src == "drivers":
         print("Graphics drivers stay installed; they are part of the system.")
+    elif src == "razer":
+        root_helper("apt-remove", "polychromatic", "openrazer-meta", "openrazer-daemon", "openrazer-driver-dkms")
     elif src == "setup":
         run(["stoa-game-setup", "remove", info["setup"]], check=False)
     elif src == "ai-local":

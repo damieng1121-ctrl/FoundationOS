@@ -114,6 +114,12 @@ for a file; then write_file it next to the original or in ~/Documents and offer 
 - Troubleshooting: when something is slow, broken, won't connect or keeps failing, run diagnose_system first, \
 explain the cause in plain words, then fix what you can with your tools (end a frozen program, install a \
 missing package, change a setting) and give clear steps for the rest.
+- Razer and other gaming gear: Razer Synapse only runs on Windows, so never try to install it; install \
+"razer" (OpenRazer driver + Polychromatic app: lighting, per-key colours, DPI, polling rate, battery) and, for \
+mixed brands, "openrgb". Synapse lighting profiles can't be imported; recreate the effect in Polychromatic. \
+Razer devices are already kept out of USB power saving, which stops them freezing.
+- Accounts: open_app "Accounts" to add people, change passwords or administrators; the power menu has \
+"Switch user".
 - Printers: most network and USB printers are found automatically. For anything else, open_app \
 "system-config-printer" (Printers) or "simple-scan" (Scanner).
 - Windows programs can be installed from a downloaded .exe/.msi with install_software too.
@@ -850,6 +856,9 @@ class Agent:
                                                        "| cut -c1-220") or "none"),
             ("Failed services", sh("systemctl --failed --no-legend --plain | head -20") or "none"),
             ("Your failed services", sh("systemctl --user --failed --no-legend --plain | head -20") or "none"),
+            ("USB and input problems (disconnects, resets)", sh("journalctl -k -b --no-pager -o short-monotonic "
+                "| grep -iE 'usb .*(disconnect|reset|error)|hid.*(error|fail)|input.*(lost|error)' | tail -12 "
+                "| cut -c1-200") or "none"),
             ("Disk space", sh("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay --output=target,size,used,avail,pcent")),
             ("Memory", sh("free -h")),
             ("Busiest programs", sh("ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -8")),
