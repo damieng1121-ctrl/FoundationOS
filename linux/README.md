@@ -79,6 +79,21 @@ through **Ollama** (nothing leaves the computer), or any other OpenAI-compatible
   approve, with your password where needed.
 - **Opens apps, changes settings** (volume, Wi-Fi, Bluetooth, airplane mode, brightness) and answers
   questions about your system.
+- **Works with your files.** "Find the invoice from March", "summarise this PDF", "what's in my budget
+  spreadsheet?", "rewrite my CV for this job and save it": it finds, reads (text, PDF, Word, Excel, PowerPoint,
+  OpenDocument) and writes files in your home folder. It asks before replacing a file and never touches keys,
+  passwords or browser profiles.
+- **Fixes problems.** "My computer is slow", "the Wi-Fi keeps dropping", "this app froze": it checks recent
+  errors, failed services, disk, memory, the busiest programs and the internet connection, explains the cause
+  and fixes what it can (closing a frozen app asks you first).
+
+**Everywhere in Stoa:**
+- **Search** - type a question or request ("how do I...", "make me a...") in the Stoa search and press Enter,
+  or pick **Ask Stoa AI** under the results.
+- **Files** - right-click any file → **Ask Stoa AI about this** (also **Scan for viruses**).
+- **When something fails** - installs from the Store, the welcome screen or a Windows installer show **Ask
+  Stoa AI to fix this**, which hands it the error.
+- From scripts or other apps: `stoa-assistant --ask "..."`, `--file PATH`, `--help-with "error text"`.
 
 Setup: when you first open it, pick a provider, paste its API key (the **Get a key** button opens the right
 page) and optionally pick a model (**Load models** lists what your key can use). Change it later from the

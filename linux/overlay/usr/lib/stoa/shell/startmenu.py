@@ -1,4 +1,5 @@
 """The Stoa menu."""
+import re
 import datetime
 import os
 import pwd
@@ -225,6 +226,15 @@ class StartMenu(Popup):
                                                     xalign=0), "fs-h2"), False, False, 4)
         for _, a in self.matches[:8]:
             self.results.pack_start(self._row(a, a.get_description(), 28), False, False, 0)
+        q_raw = entry.get_text().strip()
+        ask = ("stoa-ai-symbolic" if Gtk.IconTheme.get_default().has_icon("stoa-ai-symbolic") else "starred-symbolic",
+               f'Ask Stoa AI: "{q_raw}"',
+               lambda: apps.run_command(f"stoa-assistant --ask {GLib.shell_quote(q_raw)}"))
+        # A question or a request ("how do I...", "make me...", several words) is usually for Stoa AI.
+        looks_like_request = q_raw.endswith("?") or len(q_raw.split()) >= 3 or bool(re.match(
+            r"(?i)^(how|what|why|when|where|who|can|could|make|build|create|help|fix|install|find|show|turn|set|"
+            r"write|explain|summari[sz]e)\b", q_raw))
+        self.ask_first = looks_like_request and not self.matches
         extra = [
             ("system-search-symbolic", f'Search files for "{entry.get_text().strip()}"',
              lambda: apps.run_command(f"thunar --search {GLib.shell_quote(entry.get_text().strip())} 2>/dev/null"
@@ -232,6 +242,7 @@ class StartMenu(Popup):
             ("system-software-install-symbolic", f'Find "{entry.get_text().strip()}" in the Stoa Store',
              lambda: apps.run_command(f"stoa-store --search {GLib.shell_quote(entry.get_text().strip())}")),
         ]
+        extra.insert(0 if looks_like_request else len(extra), ask)
         for icon_name, label, fn in extra:
             b = theme.css(Gtk.Button(), "fs-row")
             h = Gtk.Box(spacing=12)
@@ -248,6 +259,9 @@ class StartMenu(Popup):
     def _activate_first(self, *_):
         if self.stack.get_visible_child_name() == "search" and getattr(self, "matches", None):
             self._launch(self.matches[0][1])
+        elif self.stack.get_visible_child_name() == "search" and getattr(self, "ask_first", False):
+            apps.run_command(f"stoa-assistant --ask {GLib.shell_quote(self.search.get_text().strip())}")
+            self.close_popup()
 
     def _launch(self, a):
         self.close_popup()

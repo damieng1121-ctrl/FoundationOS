@@ -103,6 +103,12 @@ areweanticheatyet.com for a specific title. For Jedi Academy install jedi-academ
 supported); for modding Fallout, Skyrim, Oblivion or Starfield install mod-organizer.
 - Security: open_app "stoa-protect" (Stoa Protect) for virus scans, quarantine, the firewall and \
 turning on TPM unlock for an encrypted drive. Downloads and installers are scanned automatically.
+- Files: find_files, read_file, write_file and open_path work on the person's own files. When they mention \
+a file ("my CV", "the invoice from March"), find it first. Summaries and rewrites go in the chat unless they ask \
+for a file; then write_file it next to the original or in ~/Documents and offer to open it.
+- Troubleshooting: when something is slow, broken, won't connect or keeps failing, run diagnose_system first, \
+explain the cause in plain words, then fix what you can with your tools (end a frozen program, install a \
+missing package, change a setting) and give clear steps for the rest.
 - Printers: most network and USB printers are found automatically. For anything else, open_app \
 "system-config-printer" (Printers) or "simple-scan" (Scanner).
 - Windows programs can be installed from a downloaded .exe/.msi with install_software too.
@@ -216,7 +222,102 @@ TOOLS = [
     },
 ]
 
+def _tool(name, description, props, required):
+    return {"name": name, "description": description, "eager_input_streaming": True,
+            "input_schema": {"type": "object", "properties": props, "required": required,
+                             "additionalProperties": False}}
+
+
+TOOLS += [
+    _tool("find_files", "Find the person's files by name (and optionally by words inside text files). Searches "
+          "their home folder; returns paths, sizes and dates, newest first.",
+          {"query": {"type": "string", "description": "words from the file name, e.g. 'invoice march'"},
+           "contents": {"type": "string", "description": "optional: text that must appear inside the file"},
+           "kind": {"type": "string", "enum": ["any", "document", "image", "audio", "video", "folder"]}},
+          ["query"]),
+    _tool("read_file", "Read a file's text so you can summarise, explain, check or rewrite it. Handles text and "
+          "code, PDF, Word (.docx), OpenDocument (.odt), Excel (.xlsx) and PowerPoint (.pptx).",
+          {"path": {"type": "string"}}, ["path"]),
+    _tool("write_file", "Create or replace a text file in the person's home folder (notes, letters, CSV, code...). "
+          "Replacing an existing file asks them first. Use a sensible folder like ~/Documents.",
+          {"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]),
+    _tool("open_path", "Open a file, folder or web address with the right app (e.g. a PDF in the PDF viewer, a "
+          "folder in Files, https://... in the browser).", {"target": {"type": "string"}}, ["target"]),
+    _tool("diagnose_system", "Check the computer for problems: recent errors, failed services, disk space, memory, "
+          "the busiest programs, network and internet status. Use when something is slow, broken or failing.",
+          {}, []),
+    _tool("list_processes", "List running programs with their CPU and memory use.",
+          {"sort": {"type": "string", "enum": ["cpu", "memory"]}}, []),
+    _tool("end_process", "Close a frozen or runaway program (asks the person first). Give its process id from "
+          "list_processes, or its name.", {"target": {"type": "string"}}, ["target"]),
+]
+
 REQUIRED = {t["name"]: t["input_schema"].get("required", []) for t in TOOLS}
+
+# Never read or overwrite these (keys, passwords, browser profiles, Stoa AI's own settings).
+PRIVATE = (".ssh", ".gnupg", ".config/stoa/assistant.json", ".local/share/keyrings", ".mozilla", ".pki",
+           ".config/google-chrome", ".config/chromium", ".config/microsoft-edge", ".var/app")
+
+
+def _user_path(p, must_exist=True):
+    p = os.path.realpath(os.path.expanduser(p.strip().strip('"')))
+    rel = os.path.relpath(p, HOME)
+    if any(rel == x or rel.startswith(x + "/") for x in PRIVATE):
+        raise PermissionError("that location holds private keys or passwords, so Stoa AI doesn't touch it")
+    if must_exist and not os.path.exists(p):
+        raise FileNotFoundError(f"{p} doesn't exist")
+    return p
+
+
+def _office_text(path, ext):
+    """Text from Office Open XML / OpenDocument files (they're zip archives of XML)."""
+    import zipfile
+    from xml.etree import ElementTree as ET
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        if ext == ".docx":
+            parts = ["word/document.xml"]
+        elif ext == ".pptx":
+            parts = sorted((n for n in names if re.match(r"ppt/slides/slide\d+\.xml$", n)),
+                           key=lambda n: int(re.findall(r"\d+", n)[-1]))
+        elif ext == ".odt":
+            parts = ["content.xml"]
+        else:  # .xlsx: cells of each sheet, with the shared-string table resolved
+            shared = []
+            if "xl/sharedStrings.xml" in names:
+                root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                shared = ["".join(t.text or "" for t in si.iter() if t.tag.endswith("}t")) for si in root]
+            out = []
+            for n in sorted(n for n in names if re.match(r"xl/worksheets/sheet\d+\.xml$", n)):
+                out.append(f"--- {n.split('/')[-1][:-4]} ---")
+                for row in ET.fromstring(z.read(n)).iter():
+                    if not row.tag.endswith("}row"):
+                        continue
+                    cells = []
+                    for c in row:
+                        v = next((x.text for x in c if x.tag.endswith("}v")), None)
+                        if v is not None and c.get("t") == "s":
+                            v = shared[int(v)] if v.isdigit() and int(v) < len(shared) else v
+                        if v is None:
+                            v = "".join(x.text or "" for x in c.iter() if x.tag.endswith("}t"))
+                        cells.append(v or "")
+                    out.append("\t".join(cells))
+            return "\n".join(out)
+        text = []
+        for part in parts:
+            if part not in names:
+                continue
+            root = ET.fromstring(z.read(part))
+            for el in root.iter():
+                tag = el.tag.split("}")[-1]
+                if tag in ("p", "h") and text and text[-1] != "\n":
+                    text.append("\n")
+                if tag in ("t", "span") and el.text:
+                    text.append(el.text)
+                if tag == "tab":
+                    text.append("\t")
+            text.append("\n")
+        return re.sub(r"\n{3,}", "\n\n", "".join(text))
 
 
 def load_config():
@@ -311,6 +412,14 @@ def list_models(provider, api_key, base_url=""):
     if provider == "gemini":
         ids = [i for i in ids if "gemini" in i and "embedding" not in i]
     return ids
+
+
+def human_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} GB"
 
 
 def slug(name):
@@ -603,6 +712,162 @@ class Agent:
         if os.path.exists(p):
             os.remove(p)
         return "Deleted."
+
+    # ------------------------------------------------------------- files
+    def t_find_files(self, a):
+        words = [w.lower() for w in a["query"].split() if w.strip()]
+        needle = (a.get("contents") or "").lower()
+        kinds = {"document": (".pdf", ".doc", ".docx", ".odt", ".txt", ".md", ".rtf", ".xls", ".xlsx", ".ods", ".csv",
+                              ".ppt", ".pptx", ".odp"),
+                 "image": (".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".svg"),
+                 "audio": (".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus"),
+                 "video": (".mp4", ".mkv", ".mov", ".avi", ".webm")}
+        kind = a.get("kind") or "any"
+        found, deadline = [], time.time() + 8
+        for root, dirs, files in os.walk(HOME):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in ("snap", "node_modules", "__pycache__")]
+            names = dirs if kind == "folder" else files
+            for n in names:
+                low = n.lower()
+                if not all(w in low for w in words):
+                    continue
+                if kind in kinds and not low.endswith(kinds[kind]):
+                    continue
+                p = os.path.join(root, n)
+                if needle and kind != "folder":
+                    try:
+                        if os.path.getsize(p) > 5_000_000:
+                            continue
+                        with open(p, errors="ignore") as f:
+                            if needle not in f.read().lower():
+                                continue
+                    except OSError:
+                        continue
+                found.append(p)
+            if len(found) >= 200 or time.time() > deadline:
+                break
+        if not found:
+            return "No matching files found in the home folder."
+        found.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0, reverse=True)
+        lines = []
+        for p in found[:30]:
+            st = os.stat(p)
+            lines.append(f"{p}  ({'folder' if os.path.isdir(p) else human_size(st.st_size)}, "
+                         f"{time.strftime('%d %b %Y', time.localtime(st.st_mtime))})")
+        more = f"\n...and {len(found) - 30} more" if len(found) > 30 else ""
+        return "\n".join(lines) + more
+
+    def t_read_file(self, a):
+        p = _user_path(a["path"])
+        if os.path.isdir(p):
+            items = sorted(os.listdir(p))[:200]
+            return f"{p} is a folder containing:\n" + "\n".join(items)
+        ext = os.path.splitext(p)[1].lower()
+        if ext == ".pdf":
+            r = subprocess.run(["pdftotext", "-layout", "-l", "40", p, "-"], capture_output=True, text=True, timeout=60)
+            text = r.stdout
+            if not text.strip():
+                return "This PDF has no text layer (it's probably a scan or images)."
+        elif ext in (".docx", ".xlsx", ".pptx", ".odt"):
+            text = _office_text(p, ext)
+        else:
+            with open(p, "rb") as f:
+                raw = f.read(400_000)
+            if b"\0" in raw[:4096]:
+                return f"{os.path.basename(p)} is a binary file ({human_size(os.path.getsize(p))}); it can't be read as text."
+            text = raw.decode("utf-8", errors="replace")
+        limit = 60_000
+        if len(text) > limit:
+            text = text[:limit] + f"\n\n[...cut: the file has {len(text):,} characters; this is the first {limit:,}]"
+        return text
+
+    def t_write_file(self, a):
+        p = _user_path(a["path"], must_exist=False)
+        if not (p + "/").startswith(HOME + "/"):
+            raise PermissionError("Stoa AI only writes inside your home folder")
+        if os.path.relpath(p, HOME).startswith("."):
+            raise PermissionError("Stoa AI doesn't change hidden settings files")
+        if os.path.exists(p) and not self.ui.ask_approval(f"Replace {p}?", "Replace"):
+            return "The person chose not to replace the file."
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write(a["content"])
+        return f"Saved {p} ({human_size(len(a['content'].encode()))})."
+
+    def t_open_path(self, a):
+        t = a["target"].strip()
+        if not re.match(r"^(https?|mailto):", t):
+            t = _user_path(t)
+        subprocess.Popen(["xdg-open", t], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return f"Opened {t}."
+
+    # ------------------------------------------------------------- troubleshooting
+    def t_diagnose_system(self, a):
+        def sh(cmd, timeout=15):
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+                return (r.stdout or r.stderr).strip()
+            except (OSError, subprocess.TimeoutExpired):
+                return "(not available)"
+        import system
+        kind, net, _ = system.network()
+        online = sh("curl -s -o /dev/null -w '%{http_code}' --max-time 6 https://connectivitycheck.gstatic.com/generate_204")
+        sections = [
+            ("System", sh(". /etc/os-release; echo \"$PRETTY_NAME, Linux $(uname -r), up $(uptime -p | cut -c4-)\"")),
+            ("Errors since start-up (newest last)", sh("journalctl -b -p 3 --no-pager -o short-monotonic -n 25 "
+                                                       "| cut -c1-220") or "none"),
+            ("Failed services", sh("systemctl --failed --no-legend --plain | head -20") or "none"),
+            ("Your failed services", sh("systemctl --user --failed --no-legend --plain | head -20") or "none"),
+            ("Disk space", sh("df -h -x tmpfs -x devtmpfs -x squashfs -x overlay --output=target,size,used,avail,pcent")),
+            ("Memory", sh("free -h")),
+            ("Busiest programs", sh("ps -eo pid,comm,%cpu,%mem --sort=-%cpu | head -8")),
+            ("Network", f"{kind} {net}".strip() + f"; internet: {'working' if online == '204' else 'NOT reachable'}"),
+            ("Temperatures", sh("cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | head -4 "
+                                "| awk '{printf \"%.0f°C \", $1/1000}'") or "not reported"),
+        ]
+        return "\n\n".join(f"## {t}\n{v}" for t, v in sections)
+
+    def t_list_processes(self, a):
+        key = "-%mem" if a.get("sort") == "memory" else "-%cpu"
+        r = subprocess.run(["ps", "-u", str(os.getuid()), "-o", "pid,comm,%cpu,%mem,etime", f"--sort={key}"],
+                           capture_output=True, text=True, timeout=10)
+        return "\n".join(r.stdout.splitlines()[:25])
+
+    def t_end_process(self, a):
+        t = a["target"].strip()
+        if t.isdigit():
+            pids = [int(t)]
+        else:
+            r = subprocess.run(["pgrep", "-u", str(os.getuid()), "-i", "-f", t], capture_output=True, text=True)
+            pids = [int(x) for x in r.stdout.split() if int(x) != os.getpid()]
+        if not pids:
+            return f"No program matching '{t}' is running."
+        names = []
+        for pid in pids:
+            try:
+                with open(f"/proc/{pid}/comm") as f:
+                    names.append(f.read().strip())
+            except OSError:
+                pass
+        if any(n in ("stoa-shell", "labwc", "Xorg", "systemd") for n in names):
+            return "That's part of the desktop itself; ending it would close your session."
+        if not self.ui.ask_approval(f"Close {', '.join(sorted(set(names))) or t}? Unsaved work in it will be lost.",
+                                    "Close it"):
+            return "The person chose not to close it."
+        import signal
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+        time.sleep(2)
+        for pid in pids:
+            if os.path.exists(f"/proc/{pid}"):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+        return f"Closed {len(pids)} process(es)."
 
     def t_search_software(self, a):
         r = subprocess.run(["fpkg", "search", a["query"]], capture_output=True, text=True, timeout=30)

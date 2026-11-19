@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Stoa: right-click actions in Files. Users can add their own in Edit > Configure custom actions. -->
+<actions>
+  <action>
+    <icon>starred</icon>
+    <name>Ask Stoa AI about this</name>
+    <unique-id>stoa-ask-ai</unique-id>
+    <command>stoa-assistant --file %F</command>
+    <description>Summarise, explain, check, rewrite or convert with Stoa AI</description>
+    <patterns>*</patterns>
+    <text-files/>
+    <other-files/>
+    <image-files/>
+    <audio-files/>
+    <video-files/>
+  </action>
+  <action>
+    <icon>security-high</icon>
+    <name>Scan for viruses</name>
+    <unique-id>stoa-scan</unique-id>
+    <command>foot --title "Virus scan" sh -c 'stoa-protect scan %F; echo; read -p "Press Enter to close" _'</command>
+    <description>Check with Stoa Protect</description>
+    <patterns>*</patterns>
+    <directories/>
+    <text-files/>
+    <other-files/>
+    <image-files/>
+    <audio-files/>
+    <video-files/>
+  </action>
+  <action>
+    <icon>utilities-terminal</icon>
+    <name>Open Terminal Here</name>
+    <unique-id>stoa-terminal</unique-id>
+    <command>foot --working-directory %f</command>
+    <description>Open a terminal in this folder</description>
+    <patterns>*</patterns>
+    <startup-notify/>
+    <directories/>
+  </action>
+</actions>

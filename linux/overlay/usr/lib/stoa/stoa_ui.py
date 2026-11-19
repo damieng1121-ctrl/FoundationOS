@@ -1,5 +1,6 @@
 """Shared look & helpers for Stoa's GTK apps."""
 import os
+import shutil
 import subprocess
 
 import gi
@@ -126,6 +127,14 @@ class CommandRunner(Gtk.Dialog):
         self.spinner.set_fraction(1.0)
         self.status.set_text("Done" if rc == 0 else f"Failed (exit code {rc})")
         self.close_btn.set_sensitive(True)
+        if rc != 0 and shutil.which("stoa-assistant"):
+            buf = self.view.get_buffer()
+            log = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)[-5000:]
+            ask = self.add_button("Ask Stoa AI to fix this", Gtk.ResponseType.HELP)
+            css(ask, "f-primary")
+            ask.connect("clicked", lambda *_: spawn(
+                "stoa-assistant", "--help-with", f"'{self.get_title()}' failed (exit code {rc}). Output:\n{log}"))
+            ask.show()
         if self.on_done:
             self.on_done(rc)
         return False

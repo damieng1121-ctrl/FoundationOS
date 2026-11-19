@@ -34,6 +34,7 @@ DIVERTED=(
   /etc/xdg/foot/foot.ini
   /etc/lightdm/lightdm-gtk-greeter.conf
   /etc/gtk-3.0/settings.ini
+  /etc/xdg/Thunar/uca.xml
 )
 
 log "Staging Stoa ${VERSION}"
