@@ -17,6 +17,11 @@ PINS = os.path.join(CONFIG, "stoa", "pinned.json")
 CHOSEN = os.path.join(CONFIG, "stoa", "edition-chosen")
 
 
+def pwd_name():
+    import pwd
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
 def editions():
     return json.load(open(EDITIONS))
 
@@ -96,6 +101,21 @@ def gui(first_run=False):
         ui.CommandRunner(win, f"Switching to {eds[name]['name']}", ["pkexec", HELPER, "edition", name], on_done=done)
 
     def finished(name):
+        if name == "business" and os.getuid() >= 1000:
+            import grp
+            try:
+                is_admin = pwd_name() in grp.getgrnam("sudo").gr_mem
+            except KeyError:
+                is_admin = False
+            if is_admin:
+                q = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                      buttons=Gtk.ButtonsType.YES_NO, text="Use a standard account day-to-day?")
+                q.format_secondary_text("Recommended for work PCs and required for Cyber Essentials: your account "
+                                        "becomes a standard account and a separate administrator account is "
+                                        "used only when Stoa asks for an administrator password.")
+                if q.run() == Gtk.ResponseType.YES:
+                    ui.spawn("stoa-users", "--split-admin")
+                q.destroy()
         d = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.INFO,
                               text=f"This PC is now {eds[name]['name']}")
         d.format_secondary_text("Sign out and back in to see your new taskbar and settings.")

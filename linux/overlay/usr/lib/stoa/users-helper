@@ -6,6 +6,9 @@
   password USER                           set a password (new password on stdin)
   admin USER yes|no                       make an account an administrator or not
   autologin USER|off                      sign this account in automatically at start-up (or not)
+  split-admin NEWUSER "Full Name"         day-to-day standard account: create a separate administrator account
+                                          (password on stdin, hidden from the sign-in screen), then remove
+                                          administrator rights from the account asking
 
 Usernames are checked strictly; the account running Stoa can't remove or demote itself.
 """
@@ -107,6 +110,32 @@ def main():
                 sys.exit("Stoa needs at least one administrator.")
             run(["gpasswd", "-d", u.pw_name, "sudo"])
         print("Done.")
+    elif op == "split-admin" and len(a) == 3:
+        me, name, full = caller(), a[1], a[2]
+        if not me:
+            sys.exit("Run this from your own account.")
+        if name in RESERVED or not NAME_RE.match(name):
+            sys.exit("Choose another name for the administrator account (lower-case letters and numbers).")
+        if subprocess.run(["id", name], env=ENV, capture_output=True).returncode == 0:
+            sys.exit(f"The username {name} is already taken.")
+        if any(c in full for c in ":,\n"):
+            sys.exit("The full name can't contain : or ,")
+        password = sys.stdin.readline().rstrip("\n")
+        if len(password) < 8:
+            sys.exit("Use at least 8 characters for the administrator password.")
+        groups = existing_groups(["sudo", "adm", "lpadmin"])
+        run(["useradd", "--create-home", "--shell", "/bin/bash", "--comment", full, "--groups", ",".join(groups), name])
+        run(["chpasswd"], input=f"{name}:{password}\n")
+        admins = [m for m in run(["getent", "group", "sudo"]).stdout.strip().split(":")[-1].split(",") if m]
+        if name not in admins:
+            sys.exit("The administrator account couldn't be set up, so nothing else was changed.")
+        # Hide it from the sign-in screen: it's only for typing in when Stoa asks for an administrator.
+        os.makedirs("/var/lib/AccountsService/users", exist_ok=True)
+        with open(f"/var/lib/AccountsService/users/{name}", "w") as f:
+            f.write("[User]\nSystemAccount=true\n")
+        for g in ("sudo", "adm"):
+            subprocess.run(["gpasswd", "-d", me, g], env=ENV, capture_output=True)
+        print(f"{me} is now a standard account; {name} is the administrator.")
     elif op == "autologin" and len(a) == 2:
         if a[1] == "off":
             if os.path.exists(AUTOLOGIN):

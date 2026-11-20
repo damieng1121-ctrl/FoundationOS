@@ -12,7 +12,7 @@ sys.path.insert(0, "/usr/lib/stoa")
 import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import GLib, Gtk  # noqa: E402
 
 import stoa_ui as ui  # noqa: E402
 
@@ -117,6 +117,8 @@ class Accounts(Gtk.Window):
             menu_btn = ui.css(Gtk.MenuButton(label="Manage", valign=Gtk.Align.CENTER), "f-ghost")
             menu = Gtk.Menu()
             items = [("Change password…", lambda _i, p=p: self.password_dialog(p))]
+            if p["name"] == self.me and p["admin"]:
+                items.append(("Use a standard account day-to-day…", lambda _i: self.split_dialog()))
             if p["name"] != self.me:
                 items.append(("Remove administrator rights" if p["admin"] else "Make administrator",
                               lambda _i, p=p: self.done(helper("admin", p["name"], "no" if p["admin"] else "yes"))))
@@ -208,6 +210,44 @@ class Accounts(Gtk.Window):
                 break
         d.destroy()
 
+    def split_dialog(self):
+        """Cyber Essentials and good practice: do everyday work in a standard account, and keep administrator
+        rights in a separate account that's only used when Stoa asks for an administrator password."""
+        d, area = self._form("Use a standard account day-to-day", "Make the change")
+        area.pack_start(ui.css(Gtk.Label(label="Your account becomes a standard account, so anything you open - "
+                                         "including a dodgy download or email attachment - can't change the system. "
+                                         "A separate administrator account is created: when Stoa needs to install "
+                                         "software or change settings, it asks for that account's password.\n\n"
+                                         "Recommended for work PCs (it's a Cyber Essentials requirement).",
+                                         xalign=0, wrap=True, max_width_chars=52), "f-muted"), False, False, 0)
+        user = Gtk.Entry(text=f"{self.me}-admin"[:30], placeholder_text="Administrator username")
+        pw1 = Gtk.Entry(placeholder_text="Administrator password (8+ characters)", visibility=False)
+        pw2 = Gtk.Entry(placeholder_text="Type it again", visibility=False, activates_default=True)
+        msg = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+        for w in (user, pw1, pw2, msg):
+            area.pack_start(w, False, False, 0)
+        d.show_all()
+        while d.run() == Gtk.ResponseType.OK:
+            if pw1.get_text() != pw2.get_text():
+                msg.set_text("The passwords don't match.")
+                continue
+            r = helper("split-admin", user.get_text().strip(), "Administrator", stdin=pw1.get_text() + "\n")
+            if r.returncode == 126:
+                continue
+            if r.returncode:
+                msg.set_text((r.stderr or r.stdout).strip())
+                continue
+            self.refresh()
+            done = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+                                     buttons=Gtk.ButtonsType.OK, text="You're now using a standard account")
+            done.format_secondary_text(f"When Stoa asks for an administrator password, choose {user.get_text().strip()} "
+                                       "and type its password. Write it down somewhere safe. The change fully takes "
+                                       "effect after you sign out and back in.")
+            done.run()
+            done.destroy()
+            break
+        d.destroy()
+
     def remove_dialog(self, p):
         d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
                               text=f"Remove {p['full']}'s account?")
@@ -225,7 +265,10 @@ class Accounts(Gtk.Window):
 
 def main():
     ui.apply_css()
-    Accounts().show_all()
+    win = Accounts()
+    win.show_all()
+    if "--split-admin" in sys.argv:
+        GLib.idle_add(lambda: (win.split_dialog(), False)[1])
     Gtk.main()
 
 
