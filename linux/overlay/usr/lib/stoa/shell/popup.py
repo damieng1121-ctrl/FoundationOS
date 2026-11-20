@@ -7,7 +7,9 @@ from gi.repository import Gdk, Gtk, GtkLayerShell  # noqa: E402
 
 import theme  # noqa: E402
 
-TASKBAR_SPACE = 68
+# Gap between a popup and the taskbar. The compositor already keeps popups clear of the taskbar's
+# reserved space (its exclusive zone), so this is only the visible gap, not the bar's height.
+TASKBAR_GAP = 0
 
 
 class Catcher(Gtk.Window):
@@ -46,7 +48,7 @@ class Popup(Gtk.Window):
         if h_anchor in ("left", "right"):
             GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.LEFT if h_anchor == "left" else GtkLayerShell.Edge.RIGHT, True)
             GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT if h_anchor == "left" else GtkLayerShell.Edge.RIGHT, margin)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, TASKBAR_SPACE)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.BOTTOM, TASKBAR_GAP)
         GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.EXCLUSIVE)
         self.set_size_request(width, -1)
         self.panel = theme.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "fs-glass", "fs-glass-strong")

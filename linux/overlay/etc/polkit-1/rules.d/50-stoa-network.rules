@@ -1,0 +1,9 @@
+// Stoa: people signed in at this PC can join Wi-Fi networks and change network settings without an
+// administrator password (as on other desktop systems). Remote and background sessions still need one.
+polkit.addRule(function (action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 &&
+        subject.local && subject.active &&
+        (subject.isInGroup("netdev") || subject.isInGroup("sudo"))) {
+        return polkit.Result.YES;
+    }
+});

@@ -1,9 +1,11 @@
 """Quick Settings, Calendar and Run flyouts."""
 import datetime
 import os
+import re
 import shlex
 import subprocess
 import threading
+import time
 
 from gi.repository import Gio, GLib, Gtk
 
@@ -41,7 +43,9 @@ class QuickSettings(Popup):
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         page.set_border_width(18)
         grid = Gtk.Grid(column_spacing=10, row_spacing=10, column_homogeneous=True)
-        self.t_wifi = self._tile("network-wireless-symbolic", "Wi-Fi", self._toggle_wifi, more=self._show_wifi)
+        # The Wi-Fi button opens the list of nearby networks (with an on/off switch at the top).
+        self.t_wifi = self._tile("network-wireless-symbolic", "Wi-Fi", lambda *_: self._show_wifi(),
+                                 more=self._show_wifi)
         self.t_bt = self._tile("bluetooth-active-symbolic", "Bluetooth", self._toggle_bt)
         self.t_air = self._tile("airplane-mode-symbolic", "Airplane mode", self._toggle_air)
         grid.attach(self.t_wifi, 0, 0, 1, 1)
@@ -169,25 +173,102 @@ class QuickSettings(Popup):
         back.connect("clicked", lambda *_: self.stack.set_visible_child_name("main"))
         head.pack_start(back, False, False, 0)
         head.pack_start(theme.css(Gtk.Label(label="Wi-Fi", xalign=0), "fs-h2"), True, True, 0)
+        rescan = theme.css(Gtk.Button(), "fs-power-btn")
+        rescan.add(icon("view-refresh-symbolic", 16))
+        rescan.set_tooltip_text("Look for networks again")
+        rescan.connect("clicked", lambda *_: self._scan(force=True))
+        head.pack_start(rescan, False, False, 0)
+        self.wifi_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self.wifi_switch.handler = self.wifi_switch.connect("notify::active", self._wifi_switched)
+        head.pack_start(self.wifi_switch, False, False, 0)
         page.pack_start(head, False, False, 0)
+        self.wifi_status = theme.css(Gtk.Label(xalign=0, wrap=True), "fs-muted")
+        page.pack_start(self.wifi_status, False, False, 0)
         sw = Gtk.ScrolledWindow()
         sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         sw.set_min_content_height(300)
         self.wifi_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         sw.add(self.wifi_list)
         page.pack_start(sw, True, True, 0)
-        more = theme.css(Gtk.Button(label="More Wi-Fi and network settings"), "fs-link")
+        links = Gtk.Box(spacing=6)
+        hidden = theme.css(Gtk.Button(label="Hidden network…"), "fs-link")
+        hidden.connect("clicked", lambda *_: self._hidden_form())
+        links.pack_start(hidden, False, False, 0)
+        more = theme.css(Gtk.Button(label="More settings"), "fs-link")
         more.connect("clicked", lambda *_: self._run("nm-connection-editor"))
-        page.pack_end(more, False, False, 0)
+        links.pack_end(more, False, False, 0)
+        page.pack_end(links, False, False, 0)
         self.stack.add_named(page, "wifi")
+        self.scanning = False
+        self.scan_timer = None
 
     def _show_wifi(self):
         self.stack.set_visible_child_name("wifi")
+        self._scan(force=True)
+        if not self.scan_timer:  # keep the list fresh while it's open, like other systems do
+            self.scan_timer = GLib.timeout_add_seconds(10, self._auto_scan)
+
+    def _auto_scan(self):
+        if not self.get_visible() or self.stack.get_visible_child_name() != "wifi":
+            self.scan_timer = None
+            return False
+        if not self.wifi_list.get_focus_child():  # don't redraw while someone types a password
+            self._scan()
+        return True
+
+    def _scan(self, force=False):
+        if self.scanning:
+            return
+        self.scanning = True
+        if force and not self.wifi_list.get_children():
+            self.wifi_list.add(theme.css(Gtk.Label(label="Looking for networks…", xalign=0), "fs-muted"))
+            self.wifi_list.show_all()
+
+        def work():
+            has, on = system.has_wifi(), system.wifi_enabled()
+            nets = system.wifi_networks(rescan=True) if has and on else []
+            return has, on, nets
+        bg(work, self._scanned)
+
+    def _scanned(self, res):
+        self.scanning = False
+        has, on, nets = res
+        with_block(self.wifi_switch, on, prop="active")
+        self.wifi_switch.set_sensitive(has)
+        if not has:
+            self.wifi_status.set_text("No Wi-Fi adapter was found. If this PC has Wi-Fi, it may need a driver: "
+                                      "Settings > Software & Updates, or ask Stoa AI.")
+        elif not on:
+            self.wifi_status.set_text("Wi-Fi is off. Turn it on with the switch above.")
+        else:
+            self.wifi_status.set_text("Choose a network to connect." if nets else "Looking for networks…")
+        self._fill_wifi(nets)
+
+    def _wifi_switched(self, sw, _p):
+        on = sw.get_active()
+        self.wifi_status.set_text("Turning Wi-Fi on…" if on else "Turning Wi-Fi off…")
+        bg(lambda: (system.set_wifi(on), time.sleep(2 if on else 0)), lambda r: (self._scan(force=True), self.refresh()))
+
+    def _hidden_form(self):
         for c in self.wifi_list.get_children():
             c.destroy()
-        self.wifi_list.add(theme.css(Gtk.Label(label="Looking for networks…", xalign=0), "fs-muted"))
+        name = Gtk.Entry(placeholder_text="Network name (SSID)")
+        pw = Gtk.Entry(visibility=False, placeholder_text="Password (leave empty if none)")
+        go = theme.css(Gtk.Button(label="Connect"), "fs-qs-tile", "fs-on")
+        for w in (theme.css(Gtk.Label(label="Join a hidden network", xalign=0), "fs-h2"), name, pw, go):
+            self.wifi_list.pack_start(w, False, False, 4)
+
+        def connect(*_):
+            if not name.get_text().strip():
+                name.grab_focus()
+                return
+            self.wifi_list.foreach(lambda c: c.set_sensitive(False))
+            self.wifi_status.set_text(f"Connecting to {name.get_text().strip()}…")
+            bg(lambda: system.wifi_connect(name.get_text().strip(), pw.get_text() or None, hidden=True), self._connected)
+        go.connect("clicked", connect)
+        pw.connect("activate", connect)
         self.wifi_list.show_all()
-        bg(system.wifi_networks, self._fill_wifi)
+        name.grab_focus()
 
     def _fill_wifi(self, nets):
         for c in self.wifi_list.get_children():
@@ -224,6 +305,7 @@ class QuickSettings(Popup):
                     return
                 b_label = pw.get_text() or None
                 self.wifi_list.foreach(lambda c: c.set_sensitive(False))
+                self.wifi_status.set_text(f"Connecting to {n['ssid']}…")
                 bg(lambda: system.wifi_connect(n["ssid"], b_label), self._connected)
 
             b.connect("clicked", connect)
@@ -239,19 +321,30 @@ class QuickSettings(Popup):
             self.refresh()
         else:
             self._fill_wifi(system.wifi_networks())
-            self.wifi_list.pack_start(theme.css(Gtk.Label(label=msg[:120], xalign=0, wrap=True), "fs-muted"),
-                                      False, False, 4)
-            self.wifi_list.show_all()
+            if re.search(r"secrets|password|802-11-wireless-security|psk", msg, re.I):
+                msg = "That password didn't work. Check it (it's case-sensitive) and try again."
+            elif re.search(r"not authori[sz]ed|permission", msg, re.I):
+                msg = "Stoa wasn't allowed to change the network settings. Try again and enter your password if asked."
+            self.wifi_status.set_text(msg[:160])
 
     def on_open(self):
         self.stack.set_visible_child_name("main")
         self.refresh()
 
+        def offline_with_wifi():
+            return system.has_wifi() and system.network()[0] == "none"
+        # Not connected but Wi-Fi is there: go straight to the networks, which is what people want.
+        bg(offline_with_wifi, lambda yes: yes and self.get_visible() and self._show_wifi())
 
-def with_block(scale, value):
-    scale.handler_block(scale.handler)
-    scale.set_value(value)
-    scale.handler_unblock(scale.handler)
+
+def with_block(widget, value, prop=None):
+    """Set a slider's value or a switch's state without firing its change handler."""
+    widget.handler_block(widget.handler)
+    if prop:
+        widget.set_property(prop, value)
+    else:
+        widget.set_value(value)
+    widget.handler_unblock(widget.handler)
 
 
 class CalendarFlyout(Popup):

@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 
 
 def _run(*cmd, timeout=4):
@@ -52,8 +53,16 @@ def set_wifi(on):
     _run("nmcli", "radio", "wifi", "on" if on else "off")
 
 
-def wifi_networks():
-    out = _run("nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "auto",
+def wifi_scan():
+    """Ask the Wi-Fi card to look for networks now (results arrive over the next few seconds)."""
+    _run("nmcli", "device", "wifi", "rescan", timeout=10)
+
+
+def wifi_networks(rescan=False):
+    if rescan:
+        wifi_scan()
+        time.sleep(3)
+    out = _run("nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "no",
                timeout=10)
     nets = {}
     for line in out.splitlines():
@@ -67,10 +76,12 @@ def wifi_networks():
     return sorted(nets.values(), key=lambda n: (not n["active"], -n["signal"]))
 
 
-def wifi_connect(ssid, password=None):
+def wifi_connect(ssid, password=None, hidden=False):
     cmd = ["nmcli", "device", "wifi", "connect", ssid]
     if password:
         cmd += ["password", password]
+    if hidden:
+        cmd += ["hidden", "yes"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
     return r.returncode == 0, (r.stderr or r.stdout).strip()
 

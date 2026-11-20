@@ -161,6 +161,11 @@ class Taskbar(Gtk.Window):
 
     def _on_size(self, w, alloc):
         self.search_pill.set_visible(alloc.width > 900)
+        # Reserve exactly the bar's real height (it can grow with large text), so windows and the
+        # Stoa menu sit just above it.
+        if alloc.height and alloc.height + MARGIN != getattr(self, "_zone", 0):
+            self._zone = alloc.height + MARGIN
+            GtkLayerShell.set_exclusive_zone(self, self._zone)
 
     # ---------------------------------------------------------------- apps
     def refresh_apps(self):
