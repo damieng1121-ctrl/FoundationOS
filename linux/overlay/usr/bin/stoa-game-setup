@@ -9,6 +9,7 @@
                                         and add them to Steam, so they show as installed
   stoa-game-setup creality-print        Creality Print slicer (Creality's Linux build; Orca Slicer if unavailable)
   stoa-game-setup fusion-360            Fusion 360: Onshape (browser CAD) or the community Windows set-up
+  stoa-game-setup office-desktop        full desktop Microsoft Office (LinOffice: real Office in a hidden Windows VM)
   stoa-game-setup check-games           will my installed Steam games run? (ProtonDB + anti-cheat ratings)
   stoa-game-setup remove <name>         undo jedi-academy or mod-organizer
 
@@ -1018,6 +1019,94 @@ def remove_fusion_360():
         subprocess.run(["bash", script, "--uninstall"])
 
 
+# ------------------------------------------------------------ Microsoft Office (full desktop apps)
+
+LINOFFICE = "io.github.eylenburg.LinOffice"
+LINOFFICE_REPO = "https://eylenburg.github.io/linoffice/index.flatpakrepo"
+
+
+def office_requirements():
+    """(ok, problems, warnings) for running Windows + Office in the background."""
+    problems, warnings = [], []
+    flags = open("/proc/cpuinfo").read()
+    if not re.search(r"\b(vmx|svm)\b", flags):
+        problems.append("Virtualisation is turned off or not supported. Turn on 'Intel VT-x' / 'AMD-V' (sometimes "
+                        "called SVM) in the PC's BIOS/UEFI settings, then try again.")
+    elif not os.path.exists("/dev/kvm"):
+        problems.append("Virtualisation is supported but not available (/dev/kvm is missing). Restart, and check "
+                        "it's turned on in the BIOS/UEFI settings.")
+    ram = int(re.search(r"MemTotal:\s+(\d+)", open("/proc/meminfo").read()).group(1)) * 1024
+    if ram < 7.5 * 2**30:
+        problems.append(f"This PC has {ram / 2**30:.0f} GB of memory; full Office needs 8 GB or more (Windows uses up "
+                        "to 4 GB while Office is open).")
+    elif ram < 15 * 2**30:
+        warnings.append(f"With {ram / 2**30:.0f} GB of memory it works, but close other big apps while using Office.")
+    free = shutil.disk_usage(HOME).free
+    if free < 70 * 2**30:
+        problems.append(f"Only {free / 2**30:.0f} GB free; Windows and Office need about 70 GB.")
+    return not problems, problems, warnings
+
+
+def setup_office_desktop():
+    choice = "desktop"
+    if GUI:
+        r = subprocess.run(["zenity", "--list", "--radiolist", "--title=Microsoft Office on Stoa", "--width=720",
+                            "--height=380", "--text=Three ways to use Microsoft Office on Stoa:",
+                            "--column=", "--column=id", "--column=Option", "--hide-column=2", "--print-column=2",
+                            "TRUE", "desktop", "Full desktop Word, Excel, PowerPoint, Outlook, OneNote (Office 2024 or "
+                            "your Microsoft 365) - runs real Office in a hidden Windows in the background. Needs 8 GB "
+                            "memory, about 70 GB space, and your Office licence.",
+                            "FALSE", "web", "Microsoft 365 web apps - free, instant, work in their own windows "
+                            "(most features; needs internet)",
+                            "FALSE", "onlyoffice", "ONLYOFFICE - free, offline, opens and saves Word/Excel/PowerPoint "
+                            "files"], capture_output=True, text=True)
+        choice = r.stdout.strip()
+        if not choice:
+            return
+    if choice == "web":
+        subprocess.run(["fpkg", "install", "-y", "microsoft-365"])
+        return
+    if choice == "onlyoffice":
+        subprocess.run(["fpkg", "install", "-y", "onlyoffice"])
+        return
+    ok, problems, warnings = office_requirements()
+    if not ok:
+        fail("Full desktop Office can't run on this PC yet:\n\n• " + "\n• ".join(problems) +
+             "\n\nMicrosoft 365's web apps and ONLYOFFICE work on any PC - install either from the Stoa Store.")
+    if GUI and subprocess.run(["zenity", "--question", "--no-wrap", "--title=Full Microsoft Office",
+                               "--text=Stoa will set up LinOffice, which runs genuine Microsoft Office in a hidden "
+                               "Windows virtual machine and shows Word, Excel and the rest as normal Stoa windows "
+                               "(your files, clipboard and printing work across).\n\n• The first start downloads "
+                               "Windows and Office (about 8 GB) and installs them: 15-30 minutes.\n• You need your "
+                               "own Office licence (a Microsoft 365 subscription, or Office 2024), and a Windows "
+                               "licence.\n• LinOffice is a community project, not made by Microsoft." +
+                               ("\n\n" + "\n".join(warnings) if warnings else "") + "\n\nSet it up now?",
+                               "--ok-label=Set up Office", "--cancel-label=Cancel"]).returncode != 0:
+        return
+    say("Installing the virtual machine tools (Podman)...")
+    if subprocess.run(["pkexec", "/usr/lib/stoa/fpkg-helper", "virt-access"]).returncode not in (0,):
+        fail("Stoa couldn't install the virtual machine tools. Check the internet connection and try again.")
+    say("Installing LinOffice...")
+    subprocess.run(["flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
+                    "https://dl.flathub.org/repo/flathub.flatpakrepo"], capture_output=True)
+    subprocess.run(["flatpak", "remote-add", "--user", "--if-not-exists", "linoffice", LINOFFICE_REPO], check=False)
+    r = subprocess.run(["flatpak", "install", "--user", "-y", "--noninteractive", "linoffice", LINOFFICE])
+    if r.returncode:
+        fail("LinOffice couldn't be installed. Check the internet connection and try again "
+             "(details: github.com/eylenburg/linoffice).")
+    info("LinOffice is installed. It opens now to download and set up Windows and Office (about 8 GB, 15-30 "
+         "minutes) - leave it running.\n\nAfterwards, Word, Excel, PowerPoint, Outlook and OneNote are in the Stoa "
+         "menu. Sign in with your Microsoft account for Microsoft 365.\n\nIf it says it can't use virtualisation, "
+         "sign out and back in once and open LinOffice again.", "Microsoft Office")
+    subprocess.Popen(["flatpak", "run", LINOFFICE], start_new_session=True)
+
+
+def remove_office_desktop():
+    subprocess.run(["flatpak", "uninstall", "--user", "-y", "--noninteractive", LINOFFICE])
+    say("LinOffice is removed. Its Windows virtual machine is kept in Podman; remove it with: "
+        "podman volume ls / podman volume rm")
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"):
@@ -1033,6 +1122,8 @@ def main():
         setup_creality_print()
     elif a[0] == "fusion-360":
         setup_fusion_360()
+    elif a[0] == "office-desktop":
+        setup_office_desktop()
     elif a[0] == "check-games":
         check_games()
     elif a[0] == "steam-drives":
@@ -1040,7 +1131,8 @@ def main():
     elif a[0] == "remove" and len(a) > 1:
         {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer,
          "jka-mod": remove_jka_mods,
-         "creality-print": remove_creality_print, "fusion-360": remove_fusion_360}.get(
+         "creality-print": remove_creality_print, "fusion-360": remove_fusion_360,
+         "office-desktop": remove_office_desktop}.get(
             a[1], lambda: fail(f"unknown set-up {a[1]}"))()
     else:
         fail(f"unknown command: {' '.join(a)}")

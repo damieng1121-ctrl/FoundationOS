@@ -79,6 +79,17 @@ apps:
   - {id: microsoft-teams, name: Microsoft Teams, category: Communication, icon: teams, source: webapp,
      url: "https://teams.microsoft.com/", description: "Chat, meetings and calls."}
 
+  - id: microsoft-office-desktop
+    name: Microsoft Office (desktop apps)
+    category: Office
+    icon: x-office-document
+    source: setup
+    setup: office-desktop
+    aliases: [office, word, excel, powerpoint, outlook, onenote, office 2024, office 365, microsoft 365 desktop]
+    description: >-
+      The full desktop Word, Excel, PowerPoint, Outlook and OneNote (Office 2024, or Microsoft 365 when you sign
+      in) - genuine Office running in a hidden Windows in the background, via LinOffice. Needs 8 GB memory, about
+      70 GB space and your Office licence. Also offers the free web apps or ONLYOFFICE.
   - id: onlyoffice
     name: ONLYOFFICE Desktop Editors
     category: Office

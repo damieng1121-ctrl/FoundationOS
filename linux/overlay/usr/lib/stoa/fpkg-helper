@@ -315,6 +315,13 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "virt-access":  # full Microsoft Office (LinOffice): Podman, plus /dev/kvm for the person asking
+        uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or -1)
+        name = pwd.getpwuid(uid).pw_name if uid >= 1000 else sys.exit("no user")
+        sh(["apt-get", "update"])
+        sh(APT + ["install", "podman", "uidmap", "slirp4netns"])
+        subprocess.run(["groupadd", "-f", "kvm"], env=ENV)
+        sh(["usermod", "-aG", "kvm", name])
     elif op == "serial-access":  # 3D printers, Arduino and other USB serial devices for the person asking
         uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or -1)
         name = pwd.getpwuid(uid).pw_name if uid >= 1000 else sys.exit("no user")

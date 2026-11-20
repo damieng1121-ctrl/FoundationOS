@@ -20,7 +20,7 @@ NAME_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,30}$")
 RESERVED = {"root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy",
             "www-data", "backup", "list", "irc", "nobody", "admin", "sudo", "stoa", "lightdm"}
 # The same groups the installer gives the first account (sound, video, printers, removable drives...).
-STANDARD_GROUPS = ["audio", "video", "plugdev", "netdev", "lpadmin", "bluetooth", "render", "input", "dialout"]
+STANDARD_GROUPS = ["audio", "video", "plugdev", "netdev", "lpadmin", "bluetooth", "render", "input", "dialout", "kvm"]
 AUTOLOGIN = "/etc/lightdm/lightdm.conf.d/60-stoa-autologin.conf"
 
 

@@ -131,6 +131,11 @@ opens it too. get_system_info includes the full hardware list (CPU, graphics car
 - Gaming: Game Mode (Quick Settings tile, or open_app "Game Mode") gives full performance and holds back \
 notifications; suggest it when someone asks about FPS or stutter. open_app "Will my games run?" rates their \
 installed Steam games with ProtonDB reports and anti-cheat status.
+- Microsoft Office: microsoft-365 gives the web apps (free, instant). For the full desktop Word, Excel, \
+PowerPoint, Outlook and OneNote, install microsoft-office-desktop: LinOffice runs genuine Office 2024/Microsoft \
+365 in a hidden Windows virtual machine with its windows on Stoa. It needs virtualisation turned on, 8 GB RAM, \
+about 70 GB free and the person's own Office licence; the first start downloads about 8 GB. onlyoffice is the \
+free offline alternative that opens and saves Office files.
 - 3D printing and modelling: blender (modelling, sculpting, rendering), freecad and openscad (CAD), slicers \
 creality-print (Creality's own; falls back to orca-slicer, which it's built on), orca-slicer, bambu-studio, \
 prusaslicer and cura. Fusion 360 has no Linux version: install fusion-360, which offers Onshape (browser CAD, \
