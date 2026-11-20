@@ -8,3 +8,6 @@ padding=12
 default-timeout=6000
 anchor=bottom-right
 margin=10,10,54,10
+
+[mode=do-not-disturb]
+invisible=1

@@ -7,6 +7,7 @@
                                         (e.g. Movie Duels 2), with its own entry in the Stoa menu
   stoa-game-setup steam-drives          find Steam games already installed on other drives (e.g. from Windows)
                                         and add them to Steam, so they show as installed
+  stoa-game-setup check-games           will my installed Steam games run? (ProtonDB + anti-cheat ratings)
   stoa-game-setup remove <name>         undo jedi-academy or mod-organizer
 
 Runs as the user; only opening a drive at start-up asks for an administrator password.
@@ -22,6 +23,7 @@ import tarfile
 import random
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 HOME = os.path.expanduser("~")
@@ -774,6 +776,112 @@ def setup_steam_drives():
     info(msg, "Steam games added")
 
 
+# ------------------------------------------------------------ Will my games run? (ProtonDB + anti-cheat)
+
+PROTONDB = "https://www.protondb.com/api/v1/reports/summaries/{}.json"
+ANTICHEAT = "https://raw.githubusercontent.com/AreWeAntiCheatYet/AreWeAntiCheatYet/HEAD/games.json"
+RATING_CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "stoa", "game-ratings.json")
+TIERS = {"platinum": "Works perfectly", "gold": "Works well", "silver": "Works, small issues",
+         "bronze": "Runs, with problems", "borked": "Doesn't work", "pending": "Not enough reports yet"}
+
+
+def fetch_json(url, timeout=10):
+    req = urllib.request.Request(url, headers={"User-Agent": "Stoa game check"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def anticheat_index():
+    """Steam app id -> (status, anti-cheat names) from AreWeAntiCheatYet (multiplayer games only)."""
+    try:
+        data = fetch_json(ANTICHEAT, 20)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for g in data:
+        sid = (g.get("storeIds") or {}).get("steam")
+        if sid:
+            out[str(sid)] = (g.get("status", ""), ", ".join(g.get("anticheats") or []))
+    return out
+
+
+def rate_games(appids):
+    """{appid: {"tier": ..., "anticheat": (status, names) or None}} with a week-long cache."""
+    try:
+        cache = json.load(open(RATING_CACHE))
+    except (OSError, ValueError):
+        cache = {}
+    now = time.time()
+    fresh = {a: v for a, v in cache.items() if now - v.get("t", 0) < 7 * 86400}
+    todo = [a for a in appids if a not in fresh]
+    if todo:
+        ac = anticheat_index()
+        for a in todo:
+            tier, known = None, bool(ac)
+            try:
+                s = fetch_json(PROTONDB.format(a))
+                tier, known = s.get("trendingTier") or s.get("tier"), True
+            except urllib.error.HTTPError as e:
+                known = known or e.code == 404  # 404: nobody has rated it yet
+            except (OSError, ValueError):
+                pass  # offline: don't remember, try again next time
+            fresh[a] = {"tier": tier, "anticheat": ac.get(a), "t": now if known else 0}
+        os.makedirs(os.path.dirname(RATING_CACHE), exist_ok=True)
+        json.dump(fresh, open(RATING_CACHE, "w"))
+    return {a: fresh[a] for a in appids}
+
+
+def advice(r):
+    ac = r.get("anticheat")
+    if ac and ac[0] in ("Denied", "Broken"):
+        return "No", f"Its anti-cheat ({ac[1] or 'online protection'}) blocks Linux, so online play won't work."
+    tier = r.get("tier")
+    if ac and ac[0] == "Planned":
+        return "Maybe", "Online play is blocked by its anti-cheat for now; the developers plan to allow Linux."
+    if tier in ("platinum", "gold"):
+        return "Yes", TIERS[tier]
+    if tier == "silver":
+        return "Yes", "Works, with small issues - check protondb.com for tips"
+    if tier == "bronze":
+        return "Maybe", "Runs, but with problems - check protondb.com for tips"
+    if tier == "borked":
+        return "No", "Doesn't run on Linux yet"
+    return "Unknown", "No reports yet - try it; most games work"
+
+
+def check_games():
+    libs = steam_libraries()
+    games = {}
+    for lib in libs:
+        games.update(library_games(lib))
+    games = {a: n for a, (n, _s) in games.items() if not re.search(r"Proton|Steam Linux Runtime|Steamworks|"
+                                                                     r"Redistributable|SteamVR", n)}
+    if not games:
+        info("No installed Steam games were found. Install some in Steam (or add your other drives with 'Find Steam "
+             "games on other drives') and check again.", "Will my games run?")
+        return
+    say(f"Checking {len(games)} games with ProtonDB and AreWeAntiCheatYet...")
+    ratings = rate_games(sorted(games))
+    rows = []
+    order = {"No": 0, "Maybe": 1, "Unknown": 2, "Yes": 3}
+    for a, name in games.items():
+        verdict, why = advice(ratings[a])
+        rows.append((order[verdict], name, verdict, why))
+    rows.sort()
+    if GUI:
+        args = ["zenity", "--list", "--title=Will my games run?", "--width=860", "--height=560",
+                "--text=How your installed Steam games run on Stoa (from ProtonDB player reports and "
+                "AreWeAntiCheatYet).\nWindows games need Steam > Settings > Compatibility > "
+                "'Enable Steam Play for all other titles'.",
+                "--column=Game", "--column=Runs?", "--column=Details"]
+        for _o, name, verdict, why in rows:
+            args += [name, {"Yes": "✅ Yes", "Maybe": "⚠️ Maybe", "No": "❌ No", "Unknown": "❔ Unknown"}[verdict], why]
+        subprocess.run(args)
+    else:
+        for _o, name, verdict, why in rows:
+            print(f"{verdict:8} {name} - {why}")
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"):
@@ -785,6 +893,8 @@ def main():
         setup_mod_organizer(a[1] if len(a) > 1 else None)
     elif a[0] == "jka-mod":
         setup_jka_mod(a[1] if len(a) > 1 else None)
+    elif a[0] == "check-games":
+        check_games()
     elif a[0] == "steam-drives":
         setup_steam_drives()
     elif a[0] == "remove" and len(a) > 1:

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Will my games run?
+Comment=Check how your installed Steam games run on Stoa (ProtonDB and anti-cheat ratings)
+Exec=stoa-game-setup check-games
+Icon=applications-games
+Categories=Game;
+Keywords=protondb;games;steam;compatibility;anticheat;anti-cheat;proton;check;

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Game Mode
+Comment=Turn Game Mode on or off: full performance, notifications held back
+Exec=stoa-gamemode toggle
+Icon=applications-games
+Categories=Game;
+Keywords=game;mode;performance;gaming;fps;boost;

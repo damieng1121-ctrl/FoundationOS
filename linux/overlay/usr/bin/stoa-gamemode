@@ -1,0 +1,44 @@
+#!/bin/sh
+# Stoa Game Mode: everything for the game, nothing else.
+#
+#   stoa-gamemode on|off|toggle|status
+#
+# On: GameMode's performance tweaks for the whole PC (CPU at full speed, graphics card performance mode,
+# game-friendly scheduling), notifications held back, Stoa Protect's download scanning paused, Stoa AI Local
+# unloaded from memory, and Stoa Doctor stays quiet. Off puts everything back.
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+FLAG="$RUN/stoa-gamemode"
+
+on() {
+  [ -e "$FLAG" ] && return 0
+  if command -v gamemoderun >/dev/null 2>&1; then
+    # Holding a GameMode session open applies its system tweaks until Game Mode is turned off.
+    setsid gamemoderun sleep infinity >/dev/null 2>&1 &
+    echo $! > "$FLAG"
+  else
+    : > "$FLAG"
+  fi
+  command -v makoctl >/dev/null 2>&1 && makoctl mode -a do-not-disturb >/dev/null 2>&1
+  pkill -STOP -f "stoa-protect watch" 2>/dev/null
+  systemctl --user stop stoa-ai-local.service 2>/dev/null
+  command -v notify-send >/dev/null 2>&1 && notify-send -a Stoa -i applications-games -t 3000 "Game Mode on" \
+    "Full performance. Notifications wait until you turn it off."
+}
+
+off() {
+  [ -e "$FLAG" ] || return 0
+  pid="$(cat "$FLAG" 2>/dev/null)"
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null  # ends the GameMode session, which undoes its tweaks
+  rm -f "$FLAG"
+  command -v makoctl >/dev/null 2>&1 && makoctl mode -r do-not-disturb >/dev/null 2>&1
+  pkill -CONT -f "stoa-protect watch" 2>/dev/null
+  command -v notify-send >/dev/null 2>&1 && notify-send -a Stoa -i applications-games -t 3000 "Game Mode off"
+}
+
+case "${1:-toggle}" in
+  on) on ;;
+  off) off ;;
+  toggle) if [ -e "$FLAG" ]; then off; else on; fi ;;
+  status) if [ -e "$FLAG" ]; then echo on; else echo off; exit 1; fi ;;
+  *) sed -n '2,10p' "$0"; exit 2 ;;
+esac

@@ -51,6 +51,8 @@ class QuickSettings(Popup):
         grid.attach(self.t_wifi, 0, 0, 1, 1)
         grid.attach(self.t_bt, 1, 0, 1, 1)
         grid.attach(self.t_air, 2, 0, 1, 1)
+        self.t_game = self._tile("applications-games-symbolic", "Game mode", self._toggle_game)
+        grid.attach(self.t_game, 0, 1, 1, 1)
         page.pack_start(grid, False, False, 0)
 
         self.vol_row, self.vol_scale, self.vol_icon = self._slider("audio-volume-high-symbolic", system.set_volume,
@@ -125,6 +127,7 @@ class QuickSettings(Popup):
                 "wifi": system.wifi_enabled(), "has_wifi": system.has_wifi(), "net": system.network(),
                 "bt": system.bluetooth(), "air": system.airplane(), "vol": system.volume(),
                 "bri": system.brightness(), "bat": system.battery(),
+                "game": os.path.exists(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "stoa-gamemode")),
             }
 
         def show(s):
@@ -134,6 +137,7 @@ class QuickSettings(Popup):
             self.t_bt.set_visible(s["bt"] is not None)
             self._set_tile(self.t_bt, bool(s["bt"]))
             self._set_tile(self.t_air, s["air"])
+            self._set_tile(self.t_game, s["game"])
             if s["vol"]:
                 pct, muted = s["vol"]
                 with_block(self.vol_scale, pct)
@@ -153,6 +157,9 @@ class QuickSettings(Popup):
 
     def _toggle_wifi(self, *_):
         bg(lambda: system.set_wifi(not system.wifi_enabled()), lambda r: self.refresh())
+
+    def _toggle_game(self, *_):
+        bg(lambda: subprocess.run(["stoa-gamemode", "toggle"], capture_output=True), lambda r: self.refresh())
 
     def _toggle_bt(self, *_):
         bg(lambda: system.set_bluetooth(not system.bluetooth()), lambda r: self.refresh())

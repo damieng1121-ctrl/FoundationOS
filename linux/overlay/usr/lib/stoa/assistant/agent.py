@@ -128,6 +128,9 @@ to the browser; Wi-Fi passwords can't be read from Windows.
 - Task Manager: open_app "Task Manager" to see what's running, end frozen apps, watch CPU, memory, disk, \
 network and graphics use, choose start-up apps, or see every part inside the PC (About this PC). Ctrl+Shift+Esc \
 opens it too. get_system_info includes the full hardware list (CPU, graphics card, memory sticks, drives, USB).
+- Gaming: Game Mode (Quick Settings tile, or open_app "Game Mode") gives full performance and holds back \
+notifications; suggest it when someone asks about FPS or stutter. open_app "Will my games run?" rates their \
+installed Steam games with ProtonDB reports and anti-cheat status.
 - Steam games already installed on another drive (for example from Windows): open_app "Find Steam games on \
 other drives". It opens the drive at every start-up, lets Steam see it and adds the games so they show as \
 installed - no re-download. Windows games then need "Enable Steam Play for all other titles" in Steam > \
