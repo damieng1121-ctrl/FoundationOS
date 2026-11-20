@@ -56,6 +56,18 @@ def main():
         body.pack_start(Gtk.Label(label="Pick the apps you'd like. You can always get more from the Stoa Store, "
                                   "or double-click any Windows .exe / .msi installer to install it.",
                                   wrap=True, xalign=0, max_width_chars=70), False, False, 0)
+        # Coming from Windows: offer to bring files, bookmarks and games across first.
+        mig = ui.css(Gtk.Box(spacing=12), "f-card")
+        mv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        mv.pack_start(ui.css(Gtk.Label(label="Coming from Windows?", xalign=0), "f-h2"), False, False, 0)
+        mv.pack_start(ui.css(Gtk.Label(label="Bring your documents, photos, bookmarks, game saves and Steam games "
+                                       "over from Windows or a backup drive.", xalign=0, wrap=True), "f-muted"),
+                      False, False, 0)
+        mig.pack_start(mv, True, True, 0)
+        mb = ui.css(Gtk.Button(label="Move from Windows", valign=Gtk.Align.CENTER), "f-primary")
+        mb.connect("clicked", lambda *_: ui.spawn("stoa-migrate"))
+        mig.pack_end(mb, False, False, 0)
+        body.pack_start(mig, False, False, 6)
         checks = []
         for app_id, label in STARTER:
             c = Gtk.CheckButton(label=label)

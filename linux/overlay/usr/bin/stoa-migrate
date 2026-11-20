@@ -1,0 +1,659 @@
+#!/usr/bin/env python3
+"""Move from Windows: bring your files, bookmarks, wallpaper, game saves and Steam games over from a Windows
+drive (on this PC, or a USB drive / backup with a Windows "Users" folder). Windows itself is never changed.
+
+  stoa-migrate             open the assistant
+  stoa-migrate --scan      list Windows installs and what they hold (JSON, for Stoa AI)
+"""
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+HELPER = "/usr/lib/stoa/fpkg-helper"
+HOME = os.path.expanduser("~")
+SKIP_USERS = {"public", "default", "default user", "all users", "defaultapppool", "wdagutilityaccount"}
+SKIP_FILES = {"desktop.ini", "thumbs.db", "ntuser.dat", "ntuser.ini"}
+FOLDERS = [  # (key, Windows folder, Stoa folder (XDG), label)
+    ("documents", "Documents", "DOCUMENTS", "Documents"),
+    ("pictures", "Pictures", "PICTURES", "Pictures"),
+    ("music", "Music", "MUSIC", "Music"),
+    ("videos", "Videos", "VIDEOS", "Videos"),
+    ("desktop", "Desktop", "DESKTOP", "Desktop"),
+    ("downloads", "Downloads", "DOWNLOAD", "Downloads"),
+]
+BROWSERS = [  # (name, Chromium-style profile root under the user folder)
+    ("Google Chrome", "AppData/Local/Google/Chrome/User Data"),
+    ("Microsoft Edge", "AppData/Local/Microsoft/Edge/User Data"),
+    ("Brave", "AppData/Local/BraveSoftware/Brave-Browser/User Data"),
+    ("Opera", "AppData/Roaming/Opera Software/Opera Stable"),
+]
+
+
+def xdg(name):
+    try:
+        out = subprocess.run(["xdg-user-dir", name], capture_output=True, text=True).stdout.strip()
+        if out and out != HOME:
+            return out
+    except OSError:
+        pass
+    return os.path.join(HOME, name.title() if name != "DOWNLOAD" else "Downloads")
+
+
+def ci(base, *parts):
+    """Path inside a Windows drive, matching names case-insensitively (Windows doesn't care about case)."""
+    cur = base
+    for part in "/".join(parts).split("/"):
+        if not part:
+            continue
+        direct = os.path.join(cur, part)
+        if os.path.exists(direct):
+            cur = direct
+            continue
+        try:
+            match = next((n for n in os.listdir(cur) if n.lower() == part.lower()), None)
+        except OSError:
+            return None
+        if not match:
+            return None
+        cur = os.path.join(cur, match)
+    return cur
+
+
+# ------------------------------------------------------------------ finding Windows
+
+def block_devices():
+    r = subprocess.run(["lsblk", "-J", "-b", "-o", "PATH,UUID,FSTYPE,LABEL,SIZE,MOUNTPOINT"], capture_output=True,
+                       text=True)
+    out, stack = [], list(json.loads(r.stdout or "{}").get("blockdevices") or [])
+    while stack:
+        d = stack.pop(0)
+        stack[0:0] = d.get("children") or []
+        out.append(d)
+    return out
+
+
+def open_drives(devs):
+    """Open candidate drives read-only (one password prompt). -> {uuid: mountpoint}"""
+    want = [d["uuid"] for d in devs if d.get("fstype") in ("ntfs", "exfat", "ext4", "btrfs") and d.get("uuid")
+            and int(d.get("size") or 0) > 8 * 2**30]
+    have = {d["uuid"]: d["mountpoint"] for d in devs if d.get("mountpoint") and d.get("uuid")}
+    todo = [u for u in want if u not in have]
+    if todo:
+        r = subprocess.run(["pkexec", HELPER, "mount-ro", *todo], capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            u, _, mp = line.partition(" ")
+            have[u] = mp
+    return {u: have[u] for u in want if u in have}
+
+
+def users_in(root):
+    """Windows accounts under a drive (or a folder that is itself a Users folder or one user's folder)."""
+    users_dir = ci(root, "Users") or (root if os.path.basename(root).lower() == "users" else None)
+    if users_dir:
+        out = []
+        for n in sorted(os.listdir(users_dir)):
+            p = os.path.join(users_dir, n)
+            if n.lower() not in SKIP_USERS and os.path.isdir(p) and not os.path.islink(p) and \
+                    (ci(p, "Documents") or ci(p, "Desktop") or ci(p, "AppData")):
+                out.append(p)
+        return out
+    if ci(root, "Documents") or ci(root, "Desktop"):
+        return [root]
+    return []
+
+
+def find_windows():
+    """[{label, root, windows: bool, users: [paths], uuid}]"""
+    found = []
+    devs = block_devices()
+    mounts = open_drives(devs)
+    for d in devs:
+        mp = mounts.get(d.get("uuid") or "")
+        if not mp or mp in ("/", "/boot", "/boot/efi") or mp.startswith("/home"):
+            continue
+        users = users_in(mp)
+        win_old = ci(mp, "Windows.old")
+        if win_old:
+            users += users_in(win_old)
+        if users:
+            found.append({"label": d.get("label") or os.path.basename(d["path"]), "root": mp, "uuid": d.get("uuid"),
+                          "windows": bool(ci(mp, "Windows", "System32")), "size": int(d.get("size") or 0),
+                          "users": users})
+    return found
+
+
+def onedrive_dirs(user):
+    """OneDrive often holds Documents/Pictures/Desktop instead of the usual folders."""
+    out = []
+    try:
+        for n in os.listdir(user):
+            if n.lower().startswith("onedrive") and os.path.isdir(os.path.join(user, n)):
+                out.append(os.path.join(user, n))
+    except OSError:
+        pass
+    return out
+
+
+def sources(user, key, winname):
+    srcs = [p for p in [ci(user, winname)] if p]
+    for od in onedrive_dirs(user):
+        p = ci(od, winname)
+        if p:
+            srcs.append(p)
+    return srcs
+
+
+def tree_size(paths, stop=None):
+    total = n = 0
+    for p in paths:
+        for cur, dirs, files in os.walk(p):
+            if stop and stop.is_set():
+                return total, n
+            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(cur, d))]
+            for f in files:
+                if f.lower() in SKIP_FILES or f.lower().endswith(".lnk"):
+                    continue
+                try:
+                    total += os.lstat(os.path.join(cur, f)).st_size
+                    n += 1
+                except OSError:
+                    pass
+    return total, n
+
+
+def human(n):
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or u == "TB":
+            return f"{n:.0f} {u}" if u in ("B", "KB") else f"{n:.1f} {u}"
+        n /= 1024
+
+
+# ------------------------------------------------------------------ bringing things over
+
+def copy_tree(src, dst, progress, stats):
+    for cur, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(cur, d)) and d.lower() not in
+                   ("$recycle.bin", "system volume information")]
+        rel = os.path.relpath(cur, src)
+        out = os.path.normpath(os.path.join(dst, rel))
+        os.makedirs(out, exist_ok=True)
+        for f in files:
+            if f.lower() in SKIP_FILES or f.lower().endswith(".lnk"):
+                continue
+            s = os.path.join(cur, f)
+            name = re.sub(r'[\x00-\x1f]', "_", f)
+            t = os.path.join(out, name)
+            try:
+                size = os.lstat(s).st_size
+                if os.path.exists(t):
+                    if os.path.getsize(t) == size:
+                        stats["skipped"] += 1
+                        progress(size, s)
+                        continue
+                    stem, ext = os.path.splitext(name)
+                    t = os.path.join(out, f"{stem} (from Windows){ext}")
+                shutil.copy2(s, t)
+                stats["copied"] += 1
+                progress(size, s)
+            except OSError:
+                stats["failed"].append(s)  # e.g. OneDrive "online-only" files that were never downloaded
+
+
+def chromium_bookmarks(path):
+    """Bookmarks from a Chrome/Edge/Brave 'Bookmarks' file -> [(folder, title, url)]"""
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+
+    def walk(node, folder):
+        if node.get("type") == "url":
+            out.append((folder, node.get("name", ""), node.get("url", "")))
+        for c in node.get("children", []):
+            walk(c, node.get("name", folder) if node.get("type") == "folder" else folder)
+    for root in data.get("roots", {}).values():
+        if isinstance(root, dict):
+            walk(root, root.get("name", ""))
+    return out
+
+
+def firefox_bookmarks(user):
+    out = []
+    profiles = ci(user, "AppData/Roaming/Mozilla/Firefox/Profiles")
+    if not profiles:
+        return out
+    for prof in os.listdir(profiles):
+        db = os.path.join(profiles, prof, "places.sqlite")
+        if not os.path.exists(db):
+            continue
+        with tempfile.TemporaryDirectory() as td:
+            shutil.copy(db, td)  # Firefox may have locked it; work on a copy
+            try:
+                con = sqlite3.connect(os.path.join(td, "places.sqlite"))
+                rows = con.execute("SELECT f.title, b.title, p.url FROM moz_bookmarks b JOIN moz_places p ON "
+                                   "b.fk = p.id LEFT JOIN moz_bookmarks f ON b.parent = f.id WHERE b.type = 1 "
+                                   "AND p.url NOT LIKE 'place:%'").fetchall()
+                out += [(r[0] or "", r[1] or r[2], r[2]) for r in rows]
+                con.close()
+            except sqlite3.Error:
+                pass
+    return out
+
+
+def all_bookmarks(user):
+    found = {}
+    for name, rel in BROWSERS:
+        root = ci(user, rel)
+        if not root:
+            continue
+        for prof in ["Default"] + [p for p in os.listdir(root) if p.startswith("Profile ")]:
+            f = ci(root, prof, "Bookmarks") or (ci(root, "Bookmarks") if name == "Opera" else None)
+            if f:
+                found.setdefault(name, []).extend(chromium_bookmarks(f))
+    ff = firefox_bookmarks(user)
+    if ff:
+        found["Firefox"] = ff
+    return found
+
+
+def write_bookmarks_html(found, path):
+    """A standard bookmarks file every browser can import (Chrome, Firefox, Edge...)."""
+    esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")  # noqa: E731
+    lines = ["<!DOCTYPE NETSCAPE-Bookmark-file-1>", '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+             "<TITLE>Bookmarks from Windows</TITLE>", "<H1>Bookmarks from Windows</H1>", "<DL><p>"]
+    for browser, marks in found.items():
+        lines.append(f"    <DT><H3>{esc(browser)} (Windows)</H3>\n    <DL><p>")
+        folders = {}
+        for folder, title, url in marks:
+            if url.startswith(("http://", "https://", "ftp://")):
+                folders.setdefault(folder or "Bookmarks", []).append((title, url))
+        for folder, items in folders.items():
+            lines.append(f"        <DT><H3>{esc(folder)}</H3>\n        <DL><p>")
+            lines += [f'            <DT><A HREF="{esc(u)}">{esc(t)}</A>' for t, u in items]
+            lines.append("        </DL><p>")
+        lines.append("    </DL><p>")
+    lines.append("</DL><p>")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return sum(len(m) for m in found.values())
+
+
+def wallpaper_of(user):
+    for rel in ("AppData/Roaming/Microsoft/Windows/Themes/TranscodedWallpaper",
+                "AppData/Roaming/Microsoft/Windows/Themes/CachedFiles"):
+        p = ci(user, rel)
+        if p and os.path.isfile(p):
+            return p
+        if p and os.path.isdir(p):
+            imgs = sorted((os.path.join(p, f) for f in os.listdir(p)), key=os.path.getmtime, reverse=True)
+            if imgs:
+                return imgs[0]
+    return None
+
+
+def has_steam(root):
+    return any(ci(root, *p) for p in (("Program Files (x86)", "Steam", "steamapps"), ("SteamLibrary", "steamapps"),
+                                      ("Steam", "steamapps"), ("Games", "SteamLibrary", "steamapps")))
+
+
+def scan_json():
+    out = []
+    for w in find_windows():
+        entry = {"drive": w["label"], "path": w["root"], "windows_installed": w["windows"],
+                 "steam_games": has_steam(w["root"]), "accounts": []}
+        for u in w["users"]:
+            folders = {}
+            for key, winname, _x, _l in FOLDERS:
+                size, n = tree_size(sources(u, key, winname))
+                folders[key] = {"files": n, "size": human(size)}
+            entry["accounts"].append({"name": os.path.basename(u), "folders": folders,
+                                      "browsers_with_bookmarks": list(all_bookmarks(u))})
+        out.append(entry)
+    print(json.dumps(out, indent=1))
+
+
+# ================================================================== the assistant
+
+def gui():
+    sys.path.insert(0, "/usr/lib/stoa")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import GLib, Gtk, Pango
+    import stoa_ui as ui
+
+    class Migrate(Gtk.Window):
+        def __init__(self):
+            super().__init__(title="Move from Windows")
+            self.set_default_size(*ui.fit_size(720, 600))
+            self.set_icon_name("folder-download")
+            ui.css(self, "f-dark")
+            self.connect("destroy", self.quit)
+            self.stop = threading.Event()
+            self.found, self.user, self.checks, self.sizes = [], None, {}, {}
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            self.add(outer)
+            head = ui.css(Gtk.Box(spacing=14), "f-header")
+            head.pack_start(ui.logo_image(44), False, False, 0)
+            hv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            hv.pack_start(ui.css(Gtk.Label(label="Move from Windows", xalign=0), "f-title"), False, False, 0)
+            hv.pack_start(ui.css(Gtk.Label(label="Bring your files, bookmarks and games over. Windows itself "
+                                           "isn't changed.", xalign=0, wrap=True), "f-subtitle"), False, False, 0)
+            head.pack_start(hv, True, True, 0)
+            outer.pack_start(head, False, False, 0)
+            self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+            outer.pack_start(self.stack, True, True, 0)
+            self.bar = Gtk.Box(spacing=8)
+            self.bar.set_border_width(14)
+            self.back = ui.css(Gtk.Button(label="Back"), "f-ghost")
+            self.next = ui.css(Gtk.Button(label="Next"), "f-primary")
+            self.bar.pack_start(self.back, False, False, 0)
+            self.bar.pack_end(self.next, False, False, 0)
+            outer.pack_end(self.bar, False, False, 0)
+            self.back.connect("clicked", lambda *_: self.go_back())
+            self.next.connect("clicked", lambda *_: self.go_next())
+            self.page_find()
+            self.show_all()
+            self.back.hide()
+            self.next.set_sensitive(False)
+            threading.Thread(target=self._find, daemon=True).start()
+
+        def quit(self, *_):
+            self.stop.set()
+            uuids = [w["uuid"] for w in self.found if w.get("uuid") and w["root"].startswith("/run/stoa/windows-")]
+            if uuids:
+                subprocess.Popen(["pkexec", HELPER, "umount-ro", *uuids])
+            Gtk.main_quit()
+
+        def page(self, name, widget):
+            old = self.stack.get_child_by_name(name)
+            if old:
+                old.destroy()
+            sw = Gtk.ScrolledWindow()
+            sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            widget.set_border_width(20)
+            sw.add(widget)
+            sw.show_all()
+            self.stack.add_named(sw, name)
+            self.stack.set_visible_child_name(name)
+
+        # -------------------------------------------------------- 1. find Windows
+        def page_find(self):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            self.find_status = ui.css(Gtk.Label(label="Looking for Windows on this PC's drives… (you may be asked "
+                                                "for your password to open them, read-only)", xalign=0, wrap=True),
+                                      "f-h2")
+            box.pack_start(self.find_status, False, False, 0)
+            self.spinner = Gtk.Spinner(active=True)
+            box.pack_start(self.spinner, False, False, 0)
+            self.choices = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.pack_start(self.choices, False, False, 0)
+            other = ui.css(Gtk.Button(label="Choose a folder instead (USB drive or backup)…", halign=Gtk.Align.START),
+                           "f-ghost")
+            other.connect("clicked", lambda *_: self.choose_folder())
+            box.pack_end(other, False, False, 0)
+            self.page("find", box)
+
+        def _find(self):
+            try:
+                found = find_windows()
+            except Exception as e:  # noqa: BLE001
+                found = []
+                print(e, file=sys.stderr)
+            GLib.idle_add(self._found, found)
+
+        def _found(self, found):
+            self.found = found
+            self.spinner.stop()
+            self.spinner.hide()
+            for c in self.choices.get_children():
+                c.destroy()
+            accounts = [(w, u) for w in found for u in w["users"]]
+            if not accounts:
+                self.find_status.set_text("Stoa didn't find a Windows drive with your files on this PC.\n\nIf your "
+                                          "files are on a USB drive or a backup, connect it and choose its folder "
+                                          "below. If Windows is on another PC, copy your user folder "
+                                          "(C:\\Users\\your name) to a USB drive first.")
+                return False
+            self.find_status.set_text("Which Windows account are your files in?")
+            group = None
+            for w, u in accounts:
+                where = (f"Windows on {w['label']}" if w["windows"] else f"{w['label']}") + \
+                        (" (old Windows.old copy)" if "windows.old" in u.lower() else "")
+                rb = Gtk.RadioButton.new_with_label_from_widget(group, f"{os.path.basename(u)}  —  {where}")
+                group = group or rb
+                rb.target = (w, u)
+                ui.css(rb, "f-card")
+                self.choices.pack_start(rb, False, False, 0)
+            self.choices.show_all()
+            self.next.set_sensitive(True)
+            return False
+
+        def choose_folder(self):
+            d = Gtk.FileChooserDialog(title="Choose the Windows drive, Users folder or your user folder",
+                                      transient_for=self, action=Gtk.FileChooserAction.SELECT_FOLDER)
+            d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Choose", Gtk.ResponseType.OK)
+            if d.run() == Gtk.ResponseType.OK:
+                root = d.get_filename()
+                users = users_in(root)
+                if users:
+                    self.found.append({"label": os.path.basename(root), "root": root, "uuid": None,
+                                       "windows": bool(ci(root, "Windows", "System32")), "size": 0, "users": users})
+                    self._found(self.found)
+                else:
+                    self.find_status.set_text("That folder doesn't look like a Windows user folder (it should have "
+                                              "Documents, Desktop or AppData in it). Try another.")
+            d.destroy()
+
+        # -------------------------------------------------------- 2. choose what to bring
+        def page_choose(self):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            box.pack_start(ui.css(Gtk.Label(label=f"What should come over from {os.path.basename(self.user)}?",
+                                            xalign=0), "f-h2"), False, False, 0)
+            self.checks, self.size_labels = {}, {}
+            items = [(k, label, f"Into your {label} folder") for k, _w, _x, label in FOLDERS]
+            items += [("bookmarks", "Browser bookmarks", "Chrome, Edge, Firefox, Brave - a file every browser can "
+                       "import"),
+                      ("saves", "Game saves", "Your Saved Games folder"),
+                      ("wallpaper", "Wallpaper", "Your Windows desktop picture"),
+                      ("steam", "Steam games", "Add games installed on this drive to Steam, without downloading "
+                       "them again")]
+            for key, label, sub in items:
+                if key == "steam" and not (self.win.get("uuid") and has_steam(self.win["root"])):
+                    continue
+                if key == "wallpaper" and not wallpaper_of(self.user):
+                    continue
+                row = ui.css(Gtk.Box(spacing=10), "f-card")
+                cb = Gtk.CheckButton(active=True)
+                row.pack_start(cb, False, False, 0)
+                v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                v.pack_start(Gtk.Label(label=label, xalign=0), False, False, 0)
+                v.pack_start(ui.css(Gtk.Label(label=sub, xalign=0, wrap=True), "f-muted"), False, False, 0)
+                row.pack_start(v, True, True, 0)
+                sl = ui.css(Gtk.Label(label="…" if key in dict((f[0], 1) for f in FOLDERS) or key == "saves" else ""),
+                            "f-muted")
+                row.pack_end(sl, False, False, 0)
+                ev = Gtk.EventBox()
+                ev.add(row)
+                ev.connect("button-press-event", lambda _w, _e, cb=cb: cb.set_active(not cb.get_active()))
+                box.pack_start(ev, False, False, 0)
+                self.checks[key], self.size_labels[key] = cb, sl
+            self.free = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+            box.pack_start(self.free, False, False, 4)
+            box.pack_start(ui.css(Gtk.Label(label="Passwords saved in browsers come across when you sign in to the "
+                                            "browser (Chrome, Edge or Firefox sync). Wi-Fi passwords can't be read "
+                                            "from Windows - just reconnect once.", xalign=0, wrap=True), "f-muted"),
+                           False, False, 4)
+            for c in self.checks.values():
+                c.connect("toggled", lambda *_: self._update_total())
+            self.page("choose", box)
+            self.sizes = {}
+            threading.Thread(target=self._measure, args=(self.user,), daemon=True).start()
+
+        def _measure(self, user):
+            for key, winname, _x, _l in FOLDERS + [("saves", "Saved Games", None, None)]:
+                if self.stop.is_set() or user != self.user:
+                    return
+                size, n = tree_size(sources(user, key, winname), self.stop)
+                GLib.idle_add(self._measured, key, size, n)
+
+        def _measured(self, key, size, n):
+            self.sizes[key] = size
+            if key in self.size_labels:
+                self.size_labels[key].set_text(f"{n} file{'s' if n != 1 else ''} · {human(size)}" if n else "empty")
+                if not n:
+                    self.checks[key].set_active(False)
+            self._update_total()
+            return False
+
+        def _update_total(self):
+            total = sum(s for k, s in self.sizes.items() if k in self.checks and self.checks[k].get_active())
+            free = shutil.disk_usage(HOME).free
+            self.free.set_text(f"About {human(total)} to copy · {human(free)} free on Stoa's drive" +
+                               ("  —  not enough space! Untick something." if total > free * 0.95 else ""))
+            self.next.set_sensitive(total < free * 0.95)
+
+        # -------------------------------------------------------- 3. copy
+        def page_copy(self):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            self.copy_title = ui.css(Gtk.Label(label="Bringing your things over…", xalign=0), "f-h2")
+            box.pack_start(self.copy_title, False, False, 0)
+            self.pbar = Gtk.ProgressBar(show_text=True)
+            box.pack_start(self.pbar, False, False, 0)
+            self.current = ui.css(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.MIDDLE), "f-muted")
+            box.pack_start(self.current, False, False, 0)
+            self.log = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            box.pack_start(self.log, False, False, 8)
+            self.page("copy", box)
+            self.back.hide()
+            self.next.set_sensitive(False)
+            chosen = {k for k, c in self.checks.items() if c.get_active()}
+            threading.Thread(target=self._copy, args=(chosen,), daemon=True).start()
+
+        def _note(self, text):
+            def add():
+                self.log.pack_start(Gtk.Label(label="✓  " + text, xalign=0, wrap=True), False, False, 0)
+                self.log.show_all()
+                return False
+            GLib.idle_add(add)
+
+        def _copy(self, chosen):
+            total = max(1, sum(s for k, s in self.sizes.items() if k in chosen))
+            done = [0, time.monotonic()]
+            stats = {"copied": 0, "skipped": 0, "failed": []}
+
+            def progress(n, path):
+                done[0] += n
+                if time.monotonic() - done[1] > 0.15:
+                    done[1] = time.monotonic()
+                    frac = min(1.0, done[0] / total)
+                    GLib.idle_add(lambda: (self.pbar.set_fraction(frac), self.pbar.set_text(f"{frac:.0%}"),
+                                           self.current.set_text(os.path.basename(path)), False)[-1])
+            summary = []
+            for key, winname, xd, label in FOLDERS:
+                if key in chosen and not self.stop.is_set():
+                    before = stats["copied"]
+                    for src in sources(self.user, key, winname):
+                        copy_tree(src, xdg(xd), progress, stats)
+                    n = stats["copied"] - before
+                    self._note(f"{label}: {n} file{'s' if n != 1 else ''}")
+                    summary.append(label)
+            if "saves" in chosen:
+                for src in sources(self.user, "saves", "Saved Games"):
+                    copy_tree(src, os.path.join(xdg("DOCUMENTS"), "Saved Games from Windows"), progress, stats)
+                self._note("Game saves: in Documents › Saved Games from Windows")
+            notes = []
+            if "bookmarks" in chosen:
+                found = all_bookmarks(self.user)
+                if found:
+                    path = os.path.join(xdg("DOCUMENTS"), "Bookmarks from Windows.html")
+                    n = write_bookmarks_html(found, path)
+                    self._note(f"Bookmarks: {n} from {', '.join(found)} → Documents › Bookmarks from Windows.html")
+                    notes.append("To add your bookmarks to a browser: Chrome › Bookmarks › Import bookmarks and "
+                                 "settings › Bookmarks HTML file (Firefox: Bookmarks › Manage › Import), and choose "
+                                 "'Bookmarks from Windows.html' in Documents.")
+                else:
+                    self._note("Bookmarks: none found")
+            if "wallpaper" in chosen:
+                wp = wallpaper_of(self.user)
+                if wp:
+                    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as t:
+                        shutil.copyfile(wp, t.name)
+                    r = subprocess.run(["stoa-settings", "set-wallpaper", t.name], capture_output=True)
+                    os.unlink(t.name)
+                    self._note("Wallpaper: set" if r.returncode == 0 else "Wallpaper: couldn't be used")
+            if stats["failed"]:
+                notes.append(f"{len(stats['failed'])} files couldn't be copied. They're usually OneDrive files that "
+                             "were only stored online - sign in to OneDrive on the web to get them.")
+            GLib.idle_add(self._copied, stats, notes, "steam" in chosen)
+
+        def _copied(self, stats, notes, steam):
+            self.pbar.set_fraction(1)
+            self.pbar.set_text("Done")
+            self.current.set_text("")
+            self.copy_title.set_text("All done - welcome to Stoa!")
+            msg = f"{stats['copied']} files copied" + (f", {stats['skipped']} were already here" if stats["skipped"]
+                                                         else "") + "."
+            self.log.pack_start(ui.css(Gtk.Label(label=msg, xalign=0), "f-h2"), False, False, 8)
+            for n in notes:
+                self.log.pack_start(ui.css(Gtk.Label(label=n, xalign=0, wrap=True), "f-muted"), False, False, 0)
+            self.log.show_all()
+            self.next.set_label("Close")
+            self.next.set_sensitive(True)
+            self.done = True
+            if steam:
+                # The drive was opened read-only for copying; the Steam tool opens it properly (every start-up).
+                uuid = self.win.get("uuid")
+                if uuid and self.win["root"].startswith("/run/stoa/windows-"):
+                    subprocess.run(["pkexec", HELPER, "umount-ro", uuid])
+                ui.spawn("stoa-game-setup", "steam-drives")
+            return False
+
+        # -------------------------------------------------------- navigation
+        def go_next(self):
+            name = self.stack.get_visible_child_name()
+            if name == "find":
+                rb = next((r for r in self.choices.get_children() if r.get_active()), None)
+                if not rb:
+                    return
+                self.win, self.user = rb.target
+                self.page_choose()
+                self.back.show()
+                self.next.set_label("Bring it over")
+            elif name == "choose":
+                self.page_copy()
+            else:
+                self.destroy()
+
+        def go_back(self):
+            if self.stack.get_visible_child_name() == "choose":
+                self.stack.set_visible_child_name("find")
+                self.back.hide()
+                self.next.set_label("Next")
+                self.next.set_sensitive(True)
+
+    ui.apply_css()
+    Migrate()
+    Gtk.main()
+
+
+def main():
+    a = sys.argv[1:]
+    if a and a[0] in ("-h", "--help"):
+        print(__doc__)
+    elif a and a[0] == "--scan":
+        scan_json()
+    else:
+        gui()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Move from Windows
+Comment=Bring your files, bookmarks, game saves and Steam games over from Windows
+Exec=stoa-migrate
+Icon=folder-download
+Categories=System;Utility;
+Keywords=windows;migrate;transfer;import;files;documents;photos;bookmarks;switch;move;backup;onedrive;

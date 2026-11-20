@@ -179,6 +179,52 @@ def mount_drive(uuid):
     print(mp)
 
 
+def _dev_for(uuid):
+    if not re.fullmatch(r"[0-9A-Fa-f-]{4,40}", uuid):
+        sys.exit("invalid drive id")
+    dev = os.path.realpath(f"/dev/disk/by-uuid/{uuid}")
+    if not os.path.exists(dev):
+        dev = subprocess.run(["blkid", "-U", uuid], capture_output=True, text=True, env=ENV).stdout.strip()
+    return dev if dev and os.path.exists(dev) else None
+
+
+def mount_ro(uuids):
+    """Open drives read-only for Move from Windows: prints 'UUID MOUNTPOINT' per drive. Nothing is ever written,
+    so it also works when Windows was left hibernated (Fast Startup)."""
+    uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or 1000)
+    gid = pwd.getpwuid(uid).pw_gid
+    for uuid in uuids:
+        dev = _dev_for(uuid)
+        if not dev:
+            continue
+        cur = subprocess.run(["findmnt", "-n", "-o", "TARGET", "--source", dev], capture_output=True, text=True,
+                             env=ENV).stdout.split("\n")[0].strip()
+        if cur:
+            print(uuid, cur)
+            continue
+        fs = subprocess.run(["blkid", "-s", "TYPE", "-o", "value", dev], capture_output=True, text=True,
+                            env=ENV).stdout.strip()
+        mp = f"/run/stoa/windows-{uuid[:8].lower()}"
+        os.makedirs(mp, exist_ok=True)
+        tries = ([["-t", "ntfs3", "-o", f"ro,uid={uid},gid={gid},umask=022"],
+                  ["-t", "ntfs3", "-o", f"ro,force,uid={uid},gid={gid},umask=022"]] if fs == "ntfs" else
+                 [["-o", "ro"]])
+        for opts in tries:
+            if subprocess.run(["mount", *opts, dev, mp], capture_output=True, env=ENV).returncode == 0:
+                print(uuid, mp)
+                break
+        else:
+            os.rmdir(mp)
+
+
+def umount_ro(uuids):
+    for uuid in uuids:
+        mp = f"/run/stoa/windows-{uuid[:8].lower()}"
+        if re.fullmatch(r"[0-9A-Fa-f-]{4,40}", uuid) and os.path.ismount(mp):
+            subprocess.run(["umount", mp], env=ENV)
+            os.rmdir(mp)
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("fpkg-helper must run as root")
@@ -209,6 +255,10 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "mount-ro" and args:
+        mount_ro(args)
+    elif op == "umount-ro" and args:
+        umount_ro(args)
     elif op == "reboot-windows":
         cfg = open("/boot/grub/grub.cfg", errors="replace").read()
         m = re.search(r"^menuentry '([^']*Windows[^']*)'", cfg, re.M)

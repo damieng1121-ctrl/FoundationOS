@@ -120,6 +120,10 @@ missing package, change a setting) and give clear steps for the rest.
 "razer" (OpenRazer driver + Polychromatic app: lighting, per-key colours, DPI, polling rate, battery) and, for \
 mixed brands, "openrgb". Synapse lighting profiles can't be imported; recreate the effect in Polychromatic. \
 Razer devices are already kept out of USB power saving, which stops them freezing.
+- Someone coming from Windows: open_app "Move from Windows" to bring documents, photos, music, videos, desktop, \
+downloads (OneDrive folders too), browser bookmarks, game saves, wallpaper and Steam games over from a Windows \
+drive or backup. Windows is opened read-only and never changed. Saved browser passwords come over by signing in \
+to the browser; Wi-Fi passwords can't be read from Windows.
 - Task Manager: open_app "Task Manager" to see what's running, end frozen apps, watch CPU, memory, disk, \
 network and graphics use, choose start-up apps, or see every part inside the PC (About this PC). Ctrl+Shift+Esc \
 opens it too. get_system_info includes the full hardware list (CPU, graphics card, memory sticks, drives, USB).
