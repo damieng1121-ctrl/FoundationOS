@@ -2,7 +2,7 @@
 Type=Application
 Name=Stoa AI
 Comment=Ask for anything - or have it build an app for you
-Icon=stoa
+Icon=stoa-ai
 Exec=stoa-assistant
 Categories=Utility;
 Keywords=ai;assistant;claude;build;app;help;

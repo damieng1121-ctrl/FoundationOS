@@ -9,6 +9,8 @@ lxpolkit >/dev/null 2>&1 &
 command -v spice-vdagent >/dev/null && spice-vdagent >/dev/null 2>&1 &
 # Stoa Protect: scan new downloads for viruses as they arrive.
 stoa-protect watch >/dev/null 2>&1 &
+# Stoa AI, loaded hidden so the taskbar button opens it instantly.
+(sleep 8; stoa-assistant --preload) >/dev/null 2>&1 &
 stoa-welcome --autostart >/dev/null 2>&1 &
 # Stoa Doctor: watch for problems (full drive, broken update, no sound...) and offer to fix them.
 stoa-doctor watch >/dev/null 2>&1 &

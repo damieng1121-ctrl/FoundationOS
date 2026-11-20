@@ -44,6 +44,7 @@ button.fs-ai {
   color: white; background-image: linear-gradient(135deg, #4f8cff, #7a4fe0);
 }
 button.fs-ai:hover { background-image: linear-gradient(135deg, #6a9dff, #8e66ec); }
+button.fs-ai.fs-busy { opacity: 0.6; }
 .fs-search-pill {
   background-color: rgba(255, 255, 255, 0.07); border-radius: 18px; padding: 4px 14px;
   color: #aab4cc; min-width: 170px;

@@ -87,7 +87,7 @@ ICONS = IconFetcher()
 
 SOURCES = {"apt": "System package", "apt-repo": "Official vendor build", "flatpak": "Flathub",
            "webapp": "Web app", "rclone": "Cloud folder", "windows": "Windows app (Wine)", "bundle": "Stoa package"}
-CATEGORIES = ["All", "Browsers", "Office", "Communication", "Entertainment", "Media", "Games", "Education",
+CATEGORIES = ["All", "Browsers", "Office", "Communication", "Entertainment", "Media", "3D & Design", "Games", "Education",
               "Cloud Storage", "Development", "Security", "Utilities", "Windows Apps", "Installed"]
 
 

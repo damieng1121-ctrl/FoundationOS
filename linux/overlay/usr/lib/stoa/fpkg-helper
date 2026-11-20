@@ -255,6 +255,10 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "serial-access":  # 3D printers, Arduino and other USB serial devices for the person asking
+        uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or -1)
+        name = pwd.getpwuid(uid).pw_name if uid >= 1000 else sys.exit("no user")
+        sh(["usermod", "-aG", "dialout", name])
     elif op == "cleanup":  # Stoa Doctor: free space - downloaded update files, old logs, unused Flatpak runtimes
         subprocess.run(["apt-get", "clean"], env=ENV)
         subprocess.run(APT + ["autoremove", "--purge"], env=ENV)

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8cff"/>
+      <stop offset="1" stop-color="#8a4fe0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="60" fill="url(#g)"/>
+  <!-- Stoa AI sparkle: a large four-point star with a small one -->
+  <path d="M60 22 C63 46 70 53 94 56 C70 59 63 66 60 90 C57 66 50 59 26 56 C50 53 57 46 60 22 Z" fill="#fff"/>
+  <path d="M92 76 C93.5 85 96 87.5 105 89 C96 90.5 93.5 93 92 102 C90.5 93 88 90.5 79 89 C88 87.5 90.5 85 92 76 Z"
+        fill="#fff" opacity="0.85"/>
+</svg>

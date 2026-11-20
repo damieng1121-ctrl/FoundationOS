@@ -95,7 +95,8 @@ class Panel(Gtk.Window):
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, "stoa-ai")
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.TOP)
-        for e, m in ((GtkLayerShell.Edge.TOP, 8), (GtkLayerShell.Edge.BOTTOM, 68), (GtkLayerShell.Edge.RIGHT, 8)):
+        # The compositor keeps it clear of the taskbar already; these are just the gaps around it.
+        for e, m in ((GtkLayerShell.Edge.TOP, 8), (GtkLayerShell.Edge.BOTTOM, 0), (GtkLayerShell.Edge.RIGHT, 8)):
             GtkLayerShell.set_anchor(self, e, True)
             GtkLayerShell.set_margin(self, e, m)
         GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.ON_DEMAND)
@@ -118,7 +119,10 @@ class Panel(Gtk.Window):
     # ---------------------------------------------------------------- layout
     def _header(self):
         h = theme.css(Gtk.Box(spacing=12), "ai-head")
-        pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/stoa/logo-round-96.png", 36, 36)
+        try:  # Stoa AI's own sparkle icon, so it isn't mistaken for the Stoa menu
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/icons/hicolor/scalable/apps/stoa-ai.svg", 36, 36)
+        except GLib.Error:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/stoa/logo-round-96.png", 36, 36)
         h.pack_start(Gtk.Image.new_from_pixbuf(pb), False, False, 0)
         t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         t.pack_start(theme.css(Gtk.Label(label="Stoa AI", xalign=0), "ai-title"), False, False, 0)
@@ -678,7 +682,8 @@ class Assistant(Gtk.Application):
     """stoa-assistant                  show or hide Stoa AI
     stoa-assistant --ask "text"      open Stoa AI and ask it something (from Search, other apps...)
     stoa-assistant --file PATH       open Stoa AI about a file (the Files right-click action)
-    stoa-assistant --help-with TEXT  open Stoa AI to fix a problem, e.g. a failed install's log"""
+    stoa-assistant --help-with TEXT  open Stoa AI to fix a problem, e.g. a failed install's log
+    stoa-assistant --preload         load Stoa AI hidden (at sign-in), so it opens instantly"""
 
     def __init__(self):
         super().__init__(application_id="os.stoa.Assistant", flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
@@ -700,6 +705,12 @@ class Assistant(Gtk.Application):
             display = "Something went wrong - can you fix it?"
             text = ("Something went wrong on my computer. Here are the details:\n\n" + " ".join(args[1:])[-6000:] +
                     "\n\nWork out what caused it, explain it simply, and fix it if you can.")
+        if args[:1] == ["--preload"]:
+            # Started quietly at sign-in so the taskbar button opens Stoa AI instantly.
+            if self.panel is None:
+                self.activate()
+                self.panel.hide()
+            return 0
         if text is None:
             self.activate()
             return 0

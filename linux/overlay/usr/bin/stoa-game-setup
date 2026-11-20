@@ -7,6 +7,8 @@
                                         (e.g. Movie Duels 2), with its own entry in the Stoa menu
   stoa-game-setup steam-drives          find Steam games already installed on other drives (e.g. from Windows)
                                         and add them to Steam, so they show as installed
+  stoa-game-setup creality-print        Creality Print slicer (Creality's Linux build; Orca Slicer if unavailable)
+  stoa-game-setup fusion-360            Fusion 360: Onshape (browser CAD) or the community Windows set-up
   stoa-game-setup check-games           will my installed Steam games run? (ProtonDB + anti-cheat ratings)
   stoa-game-setup remove <name>         undo jedi-academy or mod-organizer
 
@@ -882,6 +884,140 @@ def check_games():
             print(f"{verdict:8} {name} - {why}")
 
 
+# ------------------------------------------------------------ 3D printing and CAD
+
+CREALITY_RELEASES = "https://api.github.com/repos/CrealityOfficial/CrealityPrint/releases?per_page=8"
+CREALITY_DIR = os.path.join(HOME, "Applications")
+FUSION_SCRIPT = ("https://codeberg.org/cryinkfly/Autodesk-Fusion-360-on-Linux/raw/branch/main/files/setup/"
+                 "autodesk_fusion_installer_x86-64.sh")
+
+
+def serial_access():
+    """USB 3D printers (and Arduino) show up as serial ports; the person needs to be in the dialout group."""
+    import grp
+    try:
+        if os.environ.get("USER", "") in grp.getgrnam("dialout").gr_mem:
+            return
+    except KeyError:
+        return
+    say("Allowing this account to talk to USB 3D printers...")
+    subprocess.run(["pkexec", "/usr/lib/stoa/fpkg-helper", "serial-access"])
+
+
+def setup_creality_print():
+    """Creality's own Linux build (Flatpak bundle or AppImage from their GitHub releases); Orca Slicer if neither."""
+    say("Looking for the latest Creality Print for Linux...")
+    try:
+        req = urllib.request.Request(CREALITY_RELEASES, headers={"User-Agent": "stoa-game-setup",
+                                                                 "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            releases = json.loads(r.read())
+    except (OSError, ValueError):
+        releases = []
+    flatpak = appimage = None
+    for rel in releases:
+        if rel.get("draft"):
+            continue
+        for a in rel.get("assets", []):
+            n = a["name"].lower()
+            if n.endswith(".flatpak") and ("x86_64" in n or "amd64" in n or "aarch64" not in n) and not flatpak:
+                flatpak = (rel["tag_name"], a["browser_download_url"], a["name"])
+            if n.endswith(".appimage") and "aarch64" not in n and "arm" not in n and not appimage:
+                appimage = (rel["tag_name"], a["browser_download_url"], a["name"])
+        if flatpak or appimage:
+            break
+    serial_access()
+    if flatpak:
+        tag, url, name = flatpak
+        with tempfile.TemporaryDirectory() as td:
+            dest = os.path.join(td, name)
+            download(url, dest)
+            # Its runtime comes from Flathub.
+            subprocess.run(["flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
+                            "https://dl.flathub.org/repo/flathub.flatpakrepo"], capture_output=True)
+            r = subprocess.run(["flatpak", "install", "--user", "-y", "--noninteractive", "--bundle", dest])
+        if r.returncode == 0:
+            info(f"Creality Print {tag} is installed - find it in the Stoa menu.\n\nYour printer's profile is in its "
+                 "set-up wizard. USB printers work after you sign out and back in once.", "Creality Print")
+            return
+        say("The Flatpak didn't install; trying the AppImage instead.")
+    if appimage:
+        tag, url, name = appimage
+        os.makedirs(CREALITY_DIR, exist_ok=True)
+        dest = os.path.join(CREALITY_DIR, "CrealityPrint.AppImage")
+        download(url, dest + ".download")
+        os.chmod(dest + ".download", 0o755)
+        os.replace(dest + ".download", dest)
+        # APPIMAGE_EXTRACT_AND_RUN: runs without FUSE, which newer AppImages otherwise need.
+        desktop("stoa-creality-print", "Creality Print", f'env APPIMAGE_EXTRACT_AND_RUN=1 "{dest}"',
+                "applications-engineering", f"Slicer for Creality 3D printers ({tag})",
+                categories="Graphics;3DGraphics;Engineering;")
+        refresh_menu()
+        info(f"Creality Print {tag} is installed - find it in the Stoa menu.\n\nIf it doesn't open, install "
+             "'Orca Slicer' from the Stoa Store: Creality Print is built on it and it has every Creality printer.",
+             "Creality Print")
+        return
+    if subprocess.run(["fpkg", "install", "-y", "orca-slicer"]).returncode == 0:
+        info("Creality hasn't published a Linux build Stoa can install right now, so Stoa installed Orca Slicer - "
+             "Creality Print is built on it, and it has profiles for every Creality printer (K1, K2, Ender, Hi...).",
+             "Creality Print")
+    else:
+        fail("Creality Print couldn't be downloaded. Check the internet connection, or install Orca Slicer from the "
+             "Stoa Store - it has profiles for every Creality printer.")
+
+
+def remove_creality_print():
+    subprocess.run(["flatpak", "uninstall", "--user", "-y", "--noninteractive", "io.github.crealityofficial.CrealityPrint"],
+                   capture_output=True)
+    for p in (os.path.join(CREALITY_DIR, "CrealityPrint.AppImage"), os.path.join(APPS, "stoa-creality-print.desktop")):
+        if os.path.exists(p):
+            os.remove(p)
+    refresh_menu()
+
+
+def setup_fusion_360():
+    """Autodesk makes no Linux version. Offer the browser-based alternative, or the community Windows set-up."""
+    choice = "community"
+    if GUI:
+        r = subprocess.run(["zenity", "--list", "--radiolist", "--title=Fusion 360 on Stoa", "--width=640",
+                            "--height=330", "--text=Autodesk doesn't make Fusion 360 for Linux. Two ways to get "
+                            "parametric CAD on Stoa:", "--column=", "--column=id", "--column=Option",
+                            "--hide-column=2", "--print-column=2",
+                            "TRUE", "onshape", "Onshape - professional CAD in the browser, works like Fusion (free for "
+                            "hobby use). Recommended.",
+                            "FALSE", "community", "Fusion 360 itself, through a community Windows set-up (unofficial: "
+                            "can break after Fusion updates; needs a good graphics card)"],
+                           capture_output=True, text=True)
+        choice = r.stdout.strip()
+        if not choice:
+            return
+    if choice == "onshape":
+        subprocess.run(["fpkg", "install", "-y", "onshape"])
+        info("Onshape is in the Stoa menu. Sign in (or create a free account) and you can import your Fusion "
+             "designs: in Fusion, File > Export > STEP, then in Onshape, Import.", "Onshape")
+        return
+    say("Downloading the community Fusion 360 installer (cryinkfly, Codeberg)...")
+    script = os.path.join(HOME, ".local/lib/stoa/fusion-installer.sh")
+    os.makedirs(os.path.dirname(script), exist_ok=True)
+    download(FUSION_SCRIPT, script)
+    os.chmod(script, 0o755)
+    cmd = (f'echo "Installing Autodesk Fusion through Wine (community installer by cryinkfly)."; '
+           'echo "It downloads Fusion from Autodesk and may ask for your password to add Wine packages."; echo; '
+           f'"{script}" --install --default; echo; '
+           'echo "If Fusion does not start or sign-in fails, see codeberg.org/cryinkfly/Autodesk-Fusion-360-on-Linux '
+           '- or use Onshape from the Stoa Store."; echo; read -p "Press Enter to close" _')
+    if GUI and shutil.which("foot"):
+        subprocess.run(["foot", "--title=Fusion 360 set-up", "bash", "-c", cmd])
+    else:
+        subprocess.run(["bash", "-c", cmd])
+
+
+def remove_fusion_360():
+    script = os.path.join(HOME, ".local/lib/stoa/fusion-installer.sh")
+    if os.path.exists(script):
+        subprocess.run(["bash", script, "--uninstall"])
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help"):
@@ -893,13 +1029,18 @@ def main():
         setup_mod_organizer(a[1] if len(a) > 1 else None)
     elif a[0] == "jka-mod":
         setup_jka_mod(a[1] if len(a) > 1 else None)
+    elif a[0] == "creality-print":
+        setup_creality_print()
+    elif a[0] == "fusion-360":
+        setup_fusion_360()
     elif a[0] == "check-games":
         check_games()
     elif a[0] == "steam-drives":
         setup_steam_drives()
     elif a[0] == "remove" and len(a) > 1:
         {"jedi-academy": remove_jedi_academy, "mod-organizer": remove_mod_organizer,
-         "jka-mod": remove_jka_mods}.get(
+         "jka-mod": remove_jka_mods,
+         "creality-print": remove_creality_print, "fusion-360": remove_fusion_360}.get(
             a[1], lambda: fail(f"unknown set-up {a[1]}"))()
     else:
         fail(f"unknown command: {' '.join(a)}")

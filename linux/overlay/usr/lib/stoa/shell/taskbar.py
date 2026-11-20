@@ -61,7 +61,8 @@ class Taskbar(Gtk.Window):
         ai.set_tooltip_text("Stoa AI (Super+C)")
         ai.set_valign(Gtk.Align.CENTER)
         ai.set_size_request(38, 38)
-        ai.connect("clicked", lambda *_: apps.run_command("stoa-assistant"))
+        ai.connect("clicked", self._ai_clicked)
+        self._ai_last = 0.0
         left.pack_start(ai, False, False, 0)
         bar.pack_start(left, False, False, 0)
 
@@ -233,6 +234,17 @@ class Taskbar(Gtk.Window):
         i = (self.cycle.get(key, -1) + 1) % len(ws)
         self.cycle[key] = i
         self.windows.send("activate", ws[i]["id"])
+
+    def _ai_clicked(self, button):
+        # Stoa AI opens or closes on each click. A quick double-click (or clicking again while it's still
+        # starting) used to open and immediately close it, so ignore clicks that come too close together.
+        now = GLib.get_monotonic_time() / 1e6
+        if now - self._ai_last < 1.0:
+            return
+        self._ai_last = now
+        button.get_style_context().add_class("fs-busy")
+        GLib.timeout_add(900, lambda: (button.get_style_context().remove_class("fs-busy"), False)[1])
+        apps.run_command("stoa-assistant")
 
     def _bar_menu(self, _w, ev):
         if ev.button != 3:

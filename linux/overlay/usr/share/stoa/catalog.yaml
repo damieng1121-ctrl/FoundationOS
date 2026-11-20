@@ -334,14 +334,49 @@ apps:
      aliases: [convert video], description: "Convert videos to any format."}
   - {id: krita, name: Krita, category: Media, icon: org.kde.krita, source: flatpak, flatpak: org.kde.krita,
      aliases: [drawing, painting, photoshop], description: "Digital painting and illustration."}
-  - {id: blender, name: Blender, category: Media, icon: org.blender.Blender, source: flatpak, flatpak: org.blender.Blender,
-     aliases: [3d], description: "3D modelling, animation and rendering."}
+  - {id: blender, name: Blender, category: 3D & Design, icon: org.blender.Blender, source: flatpak, flatpak: org.blender.Blender,
+     aliases: [3d, modelling, modeling, sculpting, rendering, 3d printing],
+     description: "3D modelling, sculpting, animation and rendering. Uses your graphics card (NVIDIA needs graphics-drivers)."}
   - {id: darktable, name: darktable, category: Media, icon: org.darktable.Darktable, source: flatpak,
      flatpak: org.darktable.Darktable, aliases: [raw, lightroom, photos], description: "Photo editing for RAW photographers."}
   - {id: shotwell, name: Shotwell, category: Media, icon: org.gnome.Shotwell, source: flatpak, flatpak: org.gnome.Shotwell,
      aliases: [photos, photo library], description: "Organise and lightly edit your photos."}
-  - {id: freecad, name: FreeCAD, category: Media, icon: org.freecad.FreeCAD, source: flatpak, flatpak: org.freecad.FreeCAD,
-     aliases: [cad, 3d printing], description: "3D CAD for engineering and 3D printing."}
+  - {id: freecad, name: FreeCAD, category: 3D & Design, icon: org.freecad.FreeCAD, source: flatpak, flatpak: org.freecad.FreeCAD,
+     aliases: [cad, 3d printing, fusion, solidworks, parametric], description: "Parametric 3D CAD for engineering and 3D printing (free, offline)."}
+  - id: creality-print
+    name: Creality Print
+    category: 3D & Design
+    icon: applications-engineering
+    source: setup
+    setup: creality-print
+    aliases: [creality, slicer, 3d printing, ender, k1, k2]
+    description: >-
+      Creality's slicer for K1, K2, Ender, Hi and other Creality printers - Creality's own Linux build (or Orca
+      Slicer, which it's built on, if that isn't available).
+  - {id: orca-slicer, name: Orca Slicer, category: 3D & Design, icon: io.github.softfever.OrcaSlicer, source: flatpak,
+     flatpak: io.github.softfever.OrcaSlicer, aliases: [slicer, 3d printing, creality, bambu, prusa, voron],
+     description: "Slicer for almost every 3D printer (Creality, Bambu, Prusa, Voron, Elegoo...)."}
+  - {id: bambu-studio, name: Bambu Studio, category: 3D & Design, icon: com.bambulab.BambuStudio, source: flatpak,
+     flatpak: com.bambulab.BambuStudio, aliases: [bambu, slicer, 3d printing], description: "Slicer for Bambu Lab printers."}
+  - {id: prusaslicer, name: PrusaSlicer, category: 3D & Design, icon: com.prusa3d.PrusaSlicer, source: flatpak,
+     flatpak: com.prusa3d.PrusaSlicer, aliases: [prusa, slicer, 3d printing], description: "Slicer for Prusa and many other printers."}
+  - {id: cura, name: UltiMaker Cura, category: 3D & Design, icon: com.ultimaker.cura, source: flatpak, flatpak: com.ultimaker.cura,
+     aliases: [cura, slicer, 3d printing], description: "Popular slicer for most 3D printers."}
+  - id: fusion-360
+    name: Fusion 360
+    category: 3D & Design
+    icon: applications-engineering
+    source: setup
+    setup: fusion-360
+    aliases: [fusion, autodesk, cad]
+    description: >-
+      Autodesk makes no Linux version. Choose Onshape (browser CAD that works like Fusion - recommended) or
+      Fusion itself through an unofficial community Windows set-up that can break after Fusion updates.
+  - {id: onshape, name: Onshape, category: 3D & Design, icon: applications-engineering, source: webapp,
+     url: "https://cad.onshape.com/", aliases: [cad, fusion, solidworks, parametric],
+     description: "Professional parametric CAD in the browser - the closest thing to Fusion 360 on Linux (free for hobby use)."}
+  - {id: openscad, name: OpenSCAD, category: 3D & Design, icon: org.openscad.OpenSCAD, source: flatpak,
+     flatpak: org.openscad.OpenSCAD, aliases: [cad, code, 3d printing], description: "Make 3D models by writing code."}
   - {id: musescore, name: MuseScore, category: Media, icon: org.musescore.MuseScore, source: flatpak,
      flatpak: org.musescore.MuseScore, aliases: [sheet music, notation], description: "Write and play sheet music."}
   - {id: shortwave, name: Shortwave, category: Media, icon: de.haeckerfelix.Shortwave, source: flatpak,

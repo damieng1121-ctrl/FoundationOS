@@ -131,6 +131,11 @@ opens it too. get_system_info includes the full hardware list (CPU, graphics car
 - Gaming: Game Mode (Quick Settings tile, or open_app "Game Mode") gives full performance and holds back \
 notifications; suggest it when someone asks about FPS or stutter. open_app "Will my games run?" rates their \
 installed Steam games with ProtonDB reports and anti-cheat status.
+- 3D printing and modelling: blender (modelling, sculpting, rendering), freecad and openscad (CAD), slicers \
+creality-print (Creality's own; falls back to orca-slicer, which it's built on), orca-slicer, bambu-studio, \
+prusaslicer and cura. Fusion 360 has no Linux version: install fusion-360, which offers Onshape (browser CAD, \
+closest to Fusion, recommended) or the unofficial community Wine set-up; be honest that the latter can break. \
+USB printers need the account in the dialout group (Creality Print's set-up does this; new accounts have it).
 - Steam games already installed on another drive (for example from Windows): open_app "Find Steam games on \
 other drives". It opens the drive at every start-up, lets Steam see it and adds the games so they show as \
 installed - no re-download. Windows games then need "Enable Steam Play for all other titles" in Steam > \
