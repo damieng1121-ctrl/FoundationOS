@@ -19,9 +19,9 @@ SUITE=noble
 VERSION="$(cat "$HERE/VERSION")"
 ROOT="$WORK/rootfs"
 ISO="$WORK/iso"
-# Edition the USB stick is made for: standard, education, business or gaming (same Stoa, different set-up).
+# Edition the USB stick is made for: standard, home, education, business or gaming (same Stoa, different set-up).
 EDITION="${EDITION:-standard}"
-case "$EDITION" in standard|education|business|gaming) ;; *) echo "EDITION must be standard, education, business or gaming" >&2; exit 1 ;; esac
+case "$EDITION" in standard|home|education|business|gaming) ;; *) echo "EDITION must be standard, home, education, business or gaming" >&2; exit 1 ;; esac
 if [ "$EDITION" = standard ]; then ISO_NAME="stoa-${VERSION}-amd64.iso"; else ISO_NAME="stoa-${EDITION}-${VERSION}-amd64.iso"; fi
 
 log() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }

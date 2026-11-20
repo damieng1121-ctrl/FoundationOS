@@ -66,7 +66,7 @@ def gui(first_run=False):
     ui.apply_css()
     eds, cur = editions(), current()
     win = Gtk.Window(title="Stoa Edition")
-    win.set_default_size(*ui.fit_size(1180, 760))
+    win.set_default_size(*ui.fit_size(1400, 760))
     win.set_icon_name("stoa")
     ui.css(win, "f-dark")
     win.connect("destroy", Gtk.main_quit)
@@ -79,7 +79,7 @@ def gui(first_run=False):
                                       "Stoa AI for you. You can switch at any time in Settings > Edition, and get any "
                                       "app from the Store whichever you choose.", xalign=0, wrap=True), "f-muted"),
                      False, False, 0)
-    grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4, min_children_per_line=1,
+    grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=5, min_children_per_line=1,
                        column_spacing=12, row_spacing=12, homogeneous=True)
     sw = Gtk.ScrolledWindow(vexpand=True)
     sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)

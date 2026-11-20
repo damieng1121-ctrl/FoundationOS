@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       edition:
-        description: "Edition to build (standard, education, business, gaming, or all)"
+        description: "Edition to build (standard, home, education, business, gaming, or all)"
         default: standard
   workflow_run:
     workflows: ["Build Stoa kernel"]
@@ -69,7 +69,7 @@ jobs:
       fail-fast: false
       matrix:
         # Version tags build all four editions; other builds the standard one (or what was asked for).
-        edition: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || inputs.edition == 'all') && '["standard","education","business","gaming"]' || format('["{0}"]', inputs.edition || 'standard')) }}
+        edition: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || inputs.edition == 'all') && '["standard","home","education","business","gaming"]' || format('["{0}"]', inputs.edition || 'standard')) }}
     steps:
       - uses: actions/checkout@v4
 
