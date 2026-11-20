@@ -42,6 +42,9 @@ cp -a "$HERE/overlay/." "$STAGE/"
 find "$STAGE" -name "__pycache__" -prune -exec rm -rf {} +
 mkdir -p "$STAGE/usr/share/stoa"
 echo "$VERSION" > "$STAGE/usr/share/stoa/VERSION"
+# What's new: the recent change titles, shown after updating (Updates app, sign-in notification).
+git -C "$HERE" log -25 --no-merges --format='%s' 2>/dev/null \
+  | grep -viE '^(ci|build|wip|merge|fixup|test)[:( ]' | head -15 | sed 's/^/• /' > "$STAGE/usr/share/stoa/whats-new.txt" || true
 
 bin="$HERE/shell/toplevels/target/release/stoa-toplevels"
 if command -v cargo >/dev/null 2>&1; then

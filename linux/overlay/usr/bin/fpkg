@@ -711,6 +711,14 @@ def update(args):
 
 def updates(args):
     pkgs = apt_upgradable()
+    try:  # new Stoa features count as an update too (cached check, refreshed every few hours)
+        sys.path.insert(0, "/usr/lib/stoa")
+        import osupdate
+        m = osupdate.check(timeout=6)
+        if m:
+            pkgs.append(f"Stoa {m['version']} (new features)")
+    except Exception:  # noqa: BLE001 - never let this break app updates
+        pass
     n = len(pkgs)
     if args.waybar:
         if n:

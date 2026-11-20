@@ -1,10 +1,17 @@
 #!/bin/sh
-# Install a Stoa update package (stoa-desktop_*.deb), or the .zip GitHub gives you around it.
-#   stoa-os-update                 # newest one in ~/Downloads
+# Update Stoa to the newest version.
+#   stoa-os-update                 # download the newest version online (checked and verified), or failing that
+#                                  # the newest stoa-desktop_*.deb / stoa-update*.zip in ~/Downloads
 #   stoa-os-update path/to/file    # a specific .deb or .zip
+#   (The Updates app does the same with one click, and can do it automatically.)
 set -e
 src="$1"
+if [ -z "$src" ] && sudo /usr/lib/stoa/fpkg-helper os-update; then
+  echo "Sign out and back in to use the new version."
+  exit 0
+fi
 if [ -z "$src" ]; then
+  echo "Couldn't update online; looking in ~/Downloads instead."
   src="$(ls -t "$HOME"/Downloads/stoa-desktop_*.deb "$HOME"/Downloads/stoa-update*.zip 2>/dev/null | head -1)"
   [ -n "$src" ] || { echo "No Stoa update found in ~/Downloads (stoa-desktop_*.deb or stoa-update.zip)." >&2; exit 1; }
 fi

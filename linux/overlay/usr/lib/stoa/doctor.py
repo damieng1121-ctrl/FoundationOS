@@ -289,6 +289,18 @@ def watch(interval=600):
                     subprocess.Popen(["sh", "-c", 'a=$(notify-send -a "Stoa" -i dialog-warning -A default=Open '
                                       '--wait "$1" "$2"); [ "$a" = default ] && stoa-taskmgr health', "sh",
                                       issue["title"], issue["detail"] + "\nClick to fix it."], start_new_session=True)
+            try:  # new Stoa features: say so once per version
+                import osupdate
+                m = osupdate.check()
+                if m and state.get("announced") != m["version"] and shutil.which("notify-send"):
+                    state["announced"] = m["version"]
+                    first = (m.get("notes") or ["Improvements and fixes"])[0]
+                    subprocess.Popen(["sh", "-c", 'a=$(notify-send -a "Stoa" -i system-software-update -A default=Open '
+                                      '--wait "$1" "$2"); [ "$a" = default ] && stoa-updates', "sh",
+                                      "New Stoa features are ready", f"{first}\nClick to update."],
+                                     start_new_session=True)
+            except Exception:  # noqa: BLE001
+                pass
             os.makedirs(os.path.dirname(STATE), exist_ok=True)
             json.dump(state, open(STATE, "w"))
         time.sleep(interval)

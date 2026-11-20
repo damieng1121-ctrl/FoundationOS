@@ -38,6 +38,25 @@ jobs:
           path: linux/out/stoa-desktop_*.deb
           compression-level: 0
 
+      # Online updates: Stoa PCs check latest.json in the rolling "stoa-update" release and install the package
+      # from it (verified by SHA-256). Needs Settings > Actions > General > Workflow permissions: Read and write.
+      - name: Publish for automatic updates
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deb="$(ls linux/out/stoa-desktop_*.deb | head -1)"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/stoa-update"
+          python3 linux/tools/update-manifest.py "$deb" "$base" > latest.json
+          cat latest.json
+          gh release view stoa-update >/dev/null 2>&1 || gh release create stoa-update --prerelease \
+            --title "Stoa update channel" --notes "Stoa installs this by itself (Updates app). Nothing to download here."
+          gh release upload stoa-update "$deb" latest.json --clobber
+          # keep only the newest package
+          gh release view stoa-update --json assets --jq '.assets[].name' \
+            | grep '^stoa-desktop_' | grep -vx "$(basename "$deb")" \
+            | while read -r old; do gh release delete-asset stoa-update "$old" -y; done
+
   iso:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04

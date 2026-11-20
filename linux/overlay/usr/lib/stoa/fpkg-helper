@@ -225,6 +225,33 @@ def umount_ro(uuids):
             os.rmdir(mp)
 
 
+def os_update(only_if_auto=False):
+    """Install the newest Stoa feature update from Stoa's update address (never from a path or URL given here)."""
+    sys.path.insert(0, "/usr/lib/stoa")
+    import osupdate
+    if only_if_auto and not osupdate.auto_enabled():
+        return
+    try:
+        m = osupdate.fetch_manifest(30)
+    except (OSError, ValueError) as e:
+        sys.exit(f"Couldn't reach Stoa's update service: {e}")
+    if not osupdate.newer(m["version"], osupdate.installed_version()):
+        print(f"Stoa is up to date ({osupdate.installed_version()}).")
+        return
+    os.makedirs("/var/cache/stoa", exist_ok=True)
+    deb = f"/var/cache/stoa/stoa-desktop_{re.sub(r'[^0-9A-Za-z.+~-]', '', m['version'])}_amd64.deb"
+    print(f"Downloading Stoa {m['version']}...", flush=True)
+    try:
+        osupdate.download_verified(m, deb)
+    except (OSError, ValueError) as e:
+        sys.exit(f"The update couldn't be downloaded: {e}")
+    os.chmod(deb, 0o644)
+    sh(APT + ["install", deb])
+    for old in os.listdir("/var/cache/stoa"):
+        if old.startswith("stoa-desktop_") and os.path.join("/var/cache/stoa", old) != deb:
+            os.remove(os.path.join("/var/cache/stoa", old))
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("fpkg-helper must run as root")
@@ -289,8 +316,20 @@ def main():
         sh(["systemctl", "reboot"])
     elif op == "mount-drive" and args:
         mount_drive(args[0])
+    elif op == "os-update":
+        os_update()
+    elif op == "os-update-auto" and args and args[0] in ("on", "off"):
+        os.makedirs("/etc/stoa", exist_ok=True)
+        if args[0] == "on":
+            open("/etc/stoa/auto-update", "w").close()
+        elif os.path.exists("/etc/stoa/auto-update"):
+            os.remove("/etc/stoa/auto-update")
     elif op == "refresh":
         sh(["apt-get", "update"])
+        try:  # automatic Stoa feature updates, when turned on (Updates app)
+            os_update(only_if_auto=True)
+        except SystemExit:
+            pass
     else:
         sys.exit(f"unknown operation {op}")
 

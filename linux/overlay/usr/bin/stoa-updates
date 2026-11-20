@@ -1,3 +1,181 @@
-#!/bin/sh
-# Install all updates in a terminal window, then refresh the bar indicator.
-exec foot --title "Stoa Updates" sh -c 'fpkg update; echo; echo "Press Enter to close"; read _'
+#!/usr/bin/env python3
+"""Stoa Updates: new Stoa features (delivered online), plus updates for apps and the system.
+
+  stoa-updates               open the Updates window
+  stoa-updates --whats-new   after Stoa has updated, say so once (run at sign-in)
+"""
+import os
+import subprocess
+import sys
+import threading
+
+sys.path.insert(0, "/usr/lib/stoa")
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import GLib, Gtk, Pango  # noqa: E402
+
+import osupdate  # noqa: E402
+import stoa_ui as ui  # noqa: E402
+
+HELPER = "/usr/lib/stoa/fpkg-helper"
+SEEN = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "stoa", "seen-version")
+
+
+def notes_text(m):
+    notes = m.get("notes") or []
+    return "\n".join(f"•  {n}" for n in notes[:12]) if notes else "Improvements and fixes."
+
+
+class Updates(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Updates")
+        self.set_default_size(*ui.fit_size(620, 620))
+        self.set_icon_name("system-software-update")
+        ui.css(self, "f-dark")
+        self.connect("destroy", Gtk.main_quit)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(18)
+        sw = Gtk.ScrolledWindow()
+        sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sw.add(box)
+        self.add(sw)
+        head = Gtk.Box()
+        head.pack_start(ui.css(Gtk.Label(label="Updates", xalign=0), "f-title"), True, True, 0)
+        again = ui.css(Gtk.Button(label="Check now"), "f-ghost")
+        again.connect("clicked", lambda *_: self.refresh(force=True))
+        head.pack_end(again, False, False, 0)
+        box.pack_start(head, False, False, 0)
+
+        # --- Stoa itself
+        self.stoa_card = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8), "f-card")
+        box.pack_start(self.stoa_card, False, False, 0)
+        self.auto = Gtk.CheckButton(label="Install new Stoa features automatically (in the background)")
+        self.auto.set_active(osupdate.auto_enabled())
+        self.auto_handler = self.auto.connect("toggled", self._auto_toggled)
+        box.pack_start(self.auto, False, False, 0)
+
+        # --- apps and system
+        self.apps_card = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8), "f-card")
+        box.pack_start(self.apps_card, False, False, 0)
+
+        # --- what's new in the installed version
+        new = osupdate.whats_new()
+        if new:
+            exp = Gtk.Expander(label=f"What's new in Stoa {osupdate.installed_version()}")
+            lab = Gtk.Label(label=new, xalign=0, wrap=True, selectable=True)
+            lab.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+            exp.add(lab)
+            box.pack_start(exp, False, False, 0)
+        self.show_all()
+        self.refresh()
+
+    def _fill(self, card, title, sub, button=None, cb=None, extra=None):
+        for c in card.get_children():
+            c.destroy()
+        row = Gtk.Box(spacing=12)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        v.pack_start(ui.css(Gtk.Label(label=title, xalign=0, wrap=True), "f-h2"), False, False, 0)
+        v.pack_start(ui.css(Gtk.Label(label=sub, xalign=0, wrap=True), "f-muted"), False, False, 0)
+        row.pack_start(v, True, True, 0)
+        if button:
+            b = ui.css(Gtk.Button(label=button, valign=Gtk.Align.CENTER), "f-primary")
+            b.connect("clicked", lambda *_: cb())
+            row.pack_end(b, False, False, 0)
+        card.pack_start(row, False, False, 0)
+        if extra:
+            card.pack_start(ui.css(Gtk.Label(label=extra, xalign=0, wrap=True, selectable=True), "f-muted"),
+                            False, False, 0)
+        card.show_all()
+
+    def refresh(self, force=False):
+        self._fill(self.stoa_card, "Stoa", "Checking for new features…")
+        self._fill(self.apps_card, "Apps and system", "Checking…")
+        if force:
+            osupdate.forget_cache()
+
+        def work():
+            m = osupdate.check(force=force)
+            try:
+                n = int(subprocess.run(["fpkg", "updates", "--count"], capture_output=True, text=True,
+                                       timeout=120).stdout.strip() or 0)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                n = -1
+            GLib.idle_add(self._show, m, n)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show(self, m, n):
+        cur = osupdate.installed_version()
+        if m:
+            size = f" · {int(m.get('size', 0)) / 1e6:.0f} MB" if m.get("size") else ""
+            self._fill(self.stoa_card, f"New Stoa features are ready - version {m['version']}",
+                       f"You have {cur}{size}. Takes a minute; sign out and back in afterwards.",
+                       "Update Stoa", self.update_stoa, notes_text(m))
+        else:
+            self._fill(self.stoa_card, "Stoa is up to date", f"Version {cur}")
+        if n > 0:
+            self._fill(self.apps_card, f"{n} app and system update{'s' if n != 1 else ''}",
+                       "Security fixes and new versions of your apps.", "Install", self.update_apps)
+        elif n == 0:
+            self._fill(self.apps_card, "Apps and system are up to date", "")
+        else:
+            self._fill(self.apps_card, "Couldn't check app updates", "Check the internet connection.")
+        return False
+
+    def update_stoa(self):
+        def done(rc):
+            if rc == 0:
+                osupdate.forget_cache()
+                self.refresh()
+                d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+                                      text="Stoa is updated")
+                d.format_secondary_text("Sign out and back in to start using the new features.")
+                d.add_button("Later", Gtk.ResponseType.CANCEL)
+                d.add_button("Sign out now", Gtk.ResponseType.OK)
+                if d.run() == Gtk.ResponseType.OK:
+                    subprocess.Popen(["labwc", "--exit"])
+                d.destroy()
+        ui.CommandRunner(self, "Updating Stoa", ["pkexec", HELPER, "os-update"], on_done=done)
+
+    def update_apps(self):
+        ui.CommandRunner(self, "Installing updates", ["fpkg", "update"], on_done=lambda rc: self.refresh())
+
+    def _auto_toggled(self, cb):
+        r = subprocess.run(["pkexec", HELPER, "os-update-auto", "on" if cb.get_active() else "off"])
+        if r.returncode:
+            cb.handler_block(self.auto_handler)
+            cb.set_active(not cb.get_active())
+            cb.handler_unblock(self.auto_handler)
+
+
+def whats_new_once():
+    """At sign-in: if Stoa was updated since last time, show a notification with what's new."""
+    cur = osupdate.installed_version()
+    try:
+        seen = open(SEEN).read().strip()
+    except OSError:
+        seen = ""
+    os.makedirs(os.path.dirname(SEEN), exist_ok=True)
+    open(SEEN, "w").write(cur)
+    if not seen or seen == cur:
+        return  # first sign-in, or nothing changed
+    new = osupdate.whats_new()
+    first = new.splitlines()[0].lstrip("•- ").strip() if new else "Improvements and fixes"
+    r = subprocess.run(["notify-send", "-a", "Stoa", "-i", "system-software-update", "-A", "default=Open", "--wait",
+                        f"Stoa updated to {cur}", f"New: {first}\nClick to see everything that's new."],
+                       capture_output=True, text=True)
+    if r.stdout.strip() == "default":
+        os.execvp("stoa-updates", ["stoa-updates"])
+
+
+def main():
+    if sys.argv[1:2] == ["--whats-new"]:
+        whats_new_once()
+        return
+    ui.apply_css()
+    Updates()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()
