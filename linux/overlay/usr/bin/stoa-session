@@ -56,11 +56,25 @@ if [ "$1" = "--x11" ] || { [ -n "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; }; th
   exit $rc
 fi
 
+# NVIDIA's driver: the desktop needs it to drive the display (modeset); its hardware pointer can glitch on wlroots,
+# and a software pointer costs nothing when the graphics card is doing the drawing.
+if [ -d /sys/module/nvidia_drm ]; then
+  export WLR_NO_HARDWARE_CURSORS=1
+  log "NVIDIA driver loaded (modeset=$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null))"
+fi
+
 # Remember when a real PC (not a VM) is drawing in software: Stoa Doctor explains and offers the driver fix.
 SLOW="${XDG_CACHE_HOME:-$HOME/.cache}/stoa/software-rendering"
 mkdir -p "$(dirname "$SLOW")"
 rm -f "$SLOW"
 [ "$virt" = none ] && [ "${WLR_RENDERER:-}" = pixman ] && echo "no-render-node" > "$SLOW"
+if [ "$virt" = none ] && lspci -n 2>/dev/null | grep -qE ' 03[0-9a-f]{2}: 10de:'; then
+  if [ ! -d /sys/module/nvidia ] && [ ! -d /sys/module/nouveau ]; then
+    echo "nvidia-no-driver" > "$SLOW"
+  elif [ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" = N ]; then
+    echo "nvidia-modeset-off" > "$SLOW"
+  fi
+fi
 
 start=$(date +%s)
 log "starting: $* (WLR_RENDERER=${WLR_RENDERER:-auto})"

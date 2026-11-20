@@ -111,6 +111,37 @@ def install_drivers():
     print(r.stdout.strip() or "No extra drivers are needed for this computer.", flush=True)
     if r.stdout.strip():
         sh(["ubuntu-drivers", "install"])
+    nvidia_for_running_kernel()
+
+
+def nvidia_for_running_kernel():
+    """NVIDIA cards: make sure the driver is built for the kernel Stoa is running (Ubuntu ships ready-made modules
+    only for its own kernels, so the Stoa kernel needs DKMS), and that it drives the display (modeset), which
+    the Stoa desktop needs - without it Stoa draws in software and the pointer and menus lag."""
+    lspci = subprocess.run(["lspci", "-n"], env=ENV, capture_output=True, text=True).stdout
+    if not re.search(r"\b03[0-9a-f]{2}: 10de:", lspci):
+        return
+    release = os.uname().release
+    out = subprocess.run(["dpkg-query", "-W", "-f", "${Package}\n", "nvidia-driver-*"], env=ENV,
+                         capture_output=True, text=True).stdout.split()
+    versions = sorted({m.group(1) for p in out if (m := re.match(r"nvidia-driver-(\d+)(-open)?$", p))}, key=int)
+    if not versions:
+        print("note: no NVIDIA driver package is installed yet.", flush=True)
+        return
+    v = versions[-1]
+    if subprocess.run(["modinfo", "-k", release, "nvidia"], env=ENV, capture_output=True).returncode != 0:
+        print(f"Building NVIDIA driver {v} for the Stoa kernel {release}...", flush=True)
+        kernel_headers()
+        pkg = f"nvidia-dkms-{v}-open" if any(p.endswith("-open") for p in out) else f"nvidia-dkms-{v}"
+        sh(APT + ["install", pkg])
+        subprocess.run(["dkms", "autoinstall", "-k", release], env=ENV)
+    with open("/etc/modprobe.d/stoa-nvidia.conf", "w") as f:
+        f.write("# Stoa: the Stoa desktop (Wayland) needs NVIDIA's driver to drive the display.\n"
+                "options nvidia-drm modeset=1\n")
+    sh(["update-initramfs", "-u", "-k", release])
+    with open("/var/run/reboot-required", "w") as f:
+        f.write("*** System restart required ***\n")
+    print("NVIDIA driver ready - restart the PC to use the graphics card.", flush=True)
 
 
 # Drives Stoa can open at start-up: (filesystem type to mount with, options). @UID@/@GID@ = the person asking.

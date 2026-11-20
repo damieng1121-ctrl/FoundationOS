@@ -177,8 +177,14 @@ def check_graphics():
     nvidia = "NVIDIA" in lspci
     detail = ("The desktop is drawing in software instead of on the graphics card, so the pointer, taskbar and "
               "menus feel slow. ")
-    detail += ("This PC has an NVIDIA card: installing its driver (and restarting) usually fixes it." if nvidia else
-               "Installing the recommended graphics driver and restarting usually fixes it.")
+    reason = open(flag).read().strip()
+    if reason == "nvidia-no-driver":
+        detail += "This PC's NVIDIA graphics card has no driver yet. Install it, then restart."
+    elif reason == "nvidia-modeset-off":
+        detail += "The NVIDIA driver is installed but isn't set up to drive the display. Stoa can fix that; restart after."
+    else:
+        detail += ("This PC has an NVIDIA card: installing its driver (and restarting) usually fixes it." if nvidia else
+                   "Installing the recommended graphics driver and restarting usually fixes it.")
     return Issue("graphics", "Graphics are running in slow mode", detail, "problem", "Install graphics driver",
                  open(flag).read() + "\n" + "\n".join(l for l in lspci.splitlines() if "VGA" in l or "3D" in l))
 

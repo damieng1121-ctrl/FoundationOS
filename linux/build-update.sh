@@ -132,6 +132,10 @@ fi
 sysctl --system >/dev/null 2>&1 || true
 # Security updates install by themselves (every edition).
 [ -f /etc/apt/apt.conf.d/20auto-upgrades ] || printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
+# NVIDIA: the display-mode setting (/etc/modprobe.d/stoa-nvidia.conf) must be in the start-up image too.
+if dpkg-query -W -f '${Status}' 'nvidia-driver-*' 2>/dev/null | grep -q "ok installed"; then
+  update-initramfs -u >/dev/null 2>&1 || true
+fi
 # Start-up menu: find Windows alongside Stoa (GRUB settings in /etc/default/grub.d/60-stoa-dualboot.cfg).
 [ -f /boot/grub/grub.cfg ] && update-grub >/dev/null 2>&1 || true
 # Xfce's "Set as wallpaper" in Files only works with Xfce's desktop; Stoa has its own (Files > right-click >
