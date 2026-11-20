@@ -10,5 +10,7 @@ command -v spice-vdagent >/dev/null && spice-vdagent >/dev/null 2>&1 &
 # Stoa Protect: scan new downloads for viruses as they arrive.
 stoa-protect watch >/dev/null 2>&1 &
 stoa-welcome --autostart >/dev/null 2>&1 &
+# Stoa Doctor: watch for problems (full drive, broken update, no sound...) and offer to fix them.
+stoa-doctor watch >/dev/null 2>&1 &
 # Apps people chose to open at sign-in (Task Manager > Start-up apps; Steam, Discord...).
 stoa-taskmgr --autostart >/dev/null 2>&1 &

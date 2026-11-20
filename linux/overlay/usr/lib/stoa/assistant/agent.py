@@ -114,7 +114,8 @@ turning on TPM unlock for an encrypted drive. Downloads and installers are scann
 a file ("my CV", "the invoice from March"), find it first. Summaries and rewrites go in the chat unless they ask \
 for a file; then write_file it next to the original or in ~/Documents and offer to open it.
 - Troubleshooting: when something is slow, broken, won't connect or keeps failing, run diagnose_system first, \
-explain the cause in plain words, then fix what you can with your tools (end a frozen program, install a \
+explain the cause in plain words, then fix what you can with your tools (fix_problem for anything \
+Stoa's health check found) (end a frozen program, install a \
 missing package, change a setting) and give clear steps for the rest.
 - Razer and other gaming gear: Razer Synapse only runs on Windows, so never try to install it; install \
 "razer" (OpenRazer driver + Polychromatic app: lighting, per-key colours, DPI, polling rate, battery) and, for \
@@ -273,6 +274,12 @@ TOOLS += [
     _tool("diagnose_system", "Check the computer for problems: recent errors, failed services, disk space, memory, "
           "the busiest programs, network and internet status. Use when something is slow, broken or failing.",
           {}, []),
+    _tool("fix_problem", "Fix a problem found by Stoa's health check (diagnose_system lists them with their id): "
+          "disk (free up space), packages (finish an interrupted update), services (restart failed services), "
+          "internet (reconnect), portal (open a Wi-Fi sign-in page), audio (restart sound), signatures (update "
+          "virus protection). Some fixes ask for the administrator password.",
+          {"id": {"type": "string", "enum": ["disk", "packages", "services", "internet", "portal", "audio",
+                                             "memory", "signatures"]}}, ["id"]),
     _tool("list_processes", "List running programs with their CPU and memory use.",
           {"sort": {"type": "string", "enum": ["cpu", "memory"]}}, []),
     _tool("end_process", "Close a frozen or runaway program (asks the person first). Give its process id from "
@@ -856,6 +863,12 @@ class Agent:
         return f"Opened {t}."
 
     # ------------------------------------------------------------- troubleshooting
+    def t_fix_problem(self, a):
+        sys.path.insert(0, "/usr/lib/stoa")
+        import doctor
+        ok, msg = doctor.fix(a["id"])
+        return ("Fixed: " if ok else "Not fixed: ") + msg
+
     def t_diagnose_system(self, a):
         def sh(cmd, timeout=15):
             try:
@@ -866,7 +879,15 @@ class Agent:
         import system
         kind, net, _ = system.network()
         online = sh("curl -s -o /dev/null -w '%{http_code}' --max-time 6 https://connectivitycheck.gstatic.com/generate_204")
+        try:
+            sys.path.insert(0, "/usr/lib/stoa")
+            import doctor
+            health = "\n".join(f"- {n}: " + (f"PROBLEM id={i['id']}: {i['title']}. {i['detail']}" if i else "ok")
+                                for n, i in doctor.run_checks())
+        except Exception as e:  # noqa: BLE001
+            health = f"(health check unavailable: {e})"
         sections = [
+            ("Stoa health check (fix_problem can fix these by id)", health),
             ("System", sh(". /etc/os-release; echo \"$PRETTY_NAME, Linux $(uname -r), up $(uptime -p | cut -c4-)\"")),
             ("Errors since start-up (newest last)", sh("journalctl -b -p 3 --no-pager -o short-monotonic -n 25 "
                                                        "| cut -c1-220") or "none"),

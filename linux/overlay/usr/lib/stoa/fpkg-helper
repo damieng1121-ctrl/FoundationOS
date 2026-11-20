@@ -255,6 +255,23 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "cleanup":  # Stoa Doctor: free space - downloaded update files, old logs, unused Flatpak runtimes
+        subprocess.run(["apt-get", "clean"], env=ENV)
+        subprocess.run(APT + ["autoremove", "--purge"], env=ENV)
+        subprocess.run(["journalctl", "--vacuum-size=200M"], env=ENV, capture_output=True)
+        subprocess.run(["flatpak", "uninstall", "--system", "--unused", "-y", "--noninteractive"], env=ENV,
+                       capture_output=True)
+        for f in os.listdir("/var/crash") if os.path.isdir("/var/crash") else []:
+            os.remove(os.path.join("/var/crash", f))
+    elif op == "repair":  # Stoa Doctor: finish an interrupted install or update
+        sh(["dpkg", "--configure", "-a"])
+        sh(APT + ["install", "-f"])
+    elif op == "restart-service" and args:  # Stoa Doctor: restart failed system services
+        for unit in args:
+            if not re.fullmatch(r"[A-Za-z0-9@._:-]+", unit):
+                sys.exit(f"invalid service name: {unit}")
+            subprocess.run(["systemctl", "reset-failed", unit], env=ENV)
+            subprocess.run(["systemctl", "restart", unit], env=ENV)
     elif op == "mount-ro" and args:
         mount_ro(args)
     elif op == "umount-ro" and args:

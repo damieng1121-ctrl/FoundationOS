@@ -2,7 +2,7 @@
 """Stoa Task Manager: what's running, how hard the PC is working, start-up apps, and everything in this PC.
 
   stoa-taskmgr                         open on Processes (Ctrl+Shift+Esc)
-  stoa-taskmgr performance|startup|system
+  stoa-taskmgr performance|startup|health|system
   stoa-taskmgr --report                print the hardware report (for Stoa AI and for support)
   stoa-taskmgr --autostart             start the apps set to start when you sign in (run by the session)
 """
@@ -748,6 +748,7 @@ def gui(page):
     gi.require_version("Gdk", "3.0")
     from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango
     import stoa_ui as ui
+    import doctor
 
     CSS = b"""
     .tm-nav { background: #0e1424; border-right: 1px solid #222c45; }
@@ -1578,11 +1579,88 @@ def gui(page):
                          "and Stoa AI Local models it can run well, and which upgrade would help most.\n\n"
                          + report_text(self.report))
 
+    # -------------------------------------------------------------- Health (Stoa Doctor)
+    class Health(Gtk.Box):
+        def __init__(self, win):
+            super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.win = win
+            self.set_border_width(18)
+            head = Gtk.Box(spacing=8)
+            vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            vb.pack_start(ui.css(Gtk.Label(label="Health", xalign=0), "f-title"), False, False, 0)
+            self.summary = ui.css(Gtk.Label(label="Checking this PC…", xalign=0, wrap=True), "f-muted")
+            vb.pack_start(self.summary, False, False, 0)
+            head.pack_start(vb, True, True, 0)
+            again = ui.css(Gtk.Button(label="Check again", valign=Gtk.Align.CENTER), "f-ghost")
+            again.connect("clicked", lambda *_: self.refresh())
+            head.pack_end(again, False, False, 0)
+            self.pack_start(head, False, False, 0)
+            sw = Gtk.ScrolledWindow(vexpand=True)
+            sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            sw.add(self.list)
+            self.pack_start(sw, True, True, 0)
+            self.pack_start(ui.css(Gtk.Label(label="Stoa checks these every 10 minutes and lets you know when "
+                                             "something needs attention.", xalign=0, wrap=True), "f-muted"),
+                            False, False, 0)
+            self.refresh()
+
+        def refresh(self):
+            self.summary.set_text("Checking this PC…")
+            threading.Thread(target=lambda: GLib.idle_add(self._show, doctor.run_checks()), daemon=True).start()
+
+        def _show(self, results):
+            for c in self.list.get_children():
+                c.destroy()
+            problems = [i for _n, i in results if i]
+            self.summary.set_text("Everything looks good." if not problems else
+                                  f"{len(problems)} thing{'s' if len(problems) > 1 else ''} need{'' if len(problems) > 1 else 's'} "
+                                  "attention.")
+            for name, issue in sorted(results, key=lambda r: r[1] is None):
+                card = ui.css(Gtk.Box(spacing=12), "f-card")
+                icon = "emblem-ok-symbolic" if not issue else ("dialog-error-symbolic" if issue["severity"] == "problem"
+                                                               else "dialog-warning-symbolic")
+                img = Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.DND)
+                card.pack_start(img, False, False, 0)
+                vb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                vb.pack_start(ui.css(Gtk.Label(label=issue["title"] if issue else name, xalign=0), "f-h2"),
+                              False, False, 0)
+                vb.pack_start(ui.css(Gtk.Label(label=issue["detail"] if issue else "OK", xalign=0, wrap=True,
+                                               max_width_chars=70), "f-muted"), False, False, 0)
+                status = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+                vb.pack_start(status, False, False, 0)
+                card.pack_start(vb, True, True, 0)
+                if issue:
+                    btns = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER)
+                    if issue["fix_label"]:
+                        fb = ui.css(Gtk.Button(label=issue["fix_label"]), "f-primary")
+                        fb.connect("clicked", self._fix, issue, status)
+                        btns.pack_start(fb, False, False, 0)
+                    ab = ui.css(Gtk.Button(label="✦ Ask Stoa AI"), "f-ghost")
+                    ab.connect("clicked", lambda _b, i=issue: doctor.ask_ai(i))
+                    btns.pack_start(ab, False, False, 0)
+                    card.pack_end(btns, False, False, 0)
+                self.list.pack_start(card, False, False, 0)
+            self.list.show_all()
+            return False
+
+        def _fix(self, button, issue, status):
+            button.set_sensitive(False)
+            status.set_text("Fixing…")
+
+            def work():
+                ok, msg = doctor.fix(issue["id"])
+                GLib.idle_add(lambda: (status.set_text(("✓ " if ok else "") + msg), button.set_sensitive(True),
+                                       GLib.timeout_add_seconds(2, lambda: (self.refresh(), False)[1]) if ok else None,
+                                       False)[-1])
+            threading.Thread(target=work, daemon=True).start()
+
     # -------------------------------------------------------------- window
     class TaskManager(Gtk.Window):
         PAGES = [("processes", "Processes", "view-list-symbolic"),
                  ("performance", "Performance", "utilities-system-monitor-symbolic"),
                  ("startup", "Start-up apps", "system-run-symbolic"),
+                 ("health", "Health", "emblem-ok-symbolic"),
                  ("system", "About this PC", "computer-symbolic")]
 
         def __init__(self, page):
@@ -1637,7 +1715,7 @@ def gui(page):
             if not row:
                 return
             if row.key not in self.built:
-                w = {"startup": Startup, "system": System}[row.key](self)
+                w = {"startup": Startup, "system": System, "health": Health}[row.key](self)
                 w.show_all()
                 self.stack.add_named(w, row.key)
                 self.built.add(row.key)
@@ -1681,7 +1759,7 @@ def main():
     elif a and a[0] == "--autostart":
         run_autostart()
     else:
-        page = a[0] if a and a[0] in ("processes", "performance", "startup", "system") else "processes"
+        page = a[0] if a and a[0] in ("processes", "performance", "startup", "health", "system") else "processes"
         gui(page)
 
 
