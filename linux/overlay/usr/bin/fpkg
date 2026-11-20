@@ -603,7 +603,12 @@ def install_target(target, assume_yes=False):
         if have("systemctl"):
             run(["systemctl", "--user", "start", "openrazer-daemon.service"], check=False)
         record(app["id"], source="razer", name=app["name"])
-        ok("Razer support is ready. Open Polychromatic from the Stoa menu to set lighting, DPI and polling rate.")
+        r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", "polychromatic"], capture_output=True, text=True)
+        if "install ok installed" in r.stdout:
+            ok("Razer support is ready. Open 'Razer Settings' from the Stoa menu for lighting, DPI and polling rate.")
+        else:
+            ok("The Razer driver is ready, but the Razer Settings app (Polychromatic) couldn't be installed, so "
+               "OpenRGB was installed for lighting. Try 'stoa install razer' again later for Razer Settings.")
     elif src == "drivers":
         root_helper("drivers")
         record(app["id"], source="drivers", name=app["name"])

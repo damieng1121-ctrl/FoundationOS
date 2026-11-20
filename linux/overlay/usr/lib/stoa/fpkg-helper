@@ -83,9 +83,13 @@ def install_razer():
     # Polychromatic, the Razer settings app, comes from its developers' Ubuntu PPA.
     r = subprocess.run(["add-apt-repository", "-y", "ppa:polychromatic/stable"], env=ENV)
     if r.returncode == 0 and subprocess.run(APT + ["install", "polychromatic"], env=ENV).returncode == 0:
-        print("Polychromatic installed.", flush=True)
+        print("Razer Settings (Polychromatic) installed.", flush=True)
     else:
-        print("note: Polychromatic couldn't be added; use OpenRGB from the Stoa Store for lighting.", flush=True)
+        # Always leave the person with a lighting app: OpenRGB also drives Razer keyboards and mice.
+        print("Polychromatic couldn't be installed from its developers' repository - installing OpenRGB for "
+              "lighting instead.", flush=True)
+        subprocess.run(["flatpak", "install", "--system", "-y", "--noninteractive", "flathub", "org.openrgb.OpenRGB"],
+                       env=ENV)
     # The OpenRazer daemon runs in each person's session; start it for every account, now and future ones.
     subprocess.run(["systemctl", "--global", "enable", "openrazer-daemon.service"], env=ENV)
     # Load the drivers now and re-bind devices that are already plugged in (no need to replug).

@@ -19,6 +19,8 @@ RENAME = {
     "pavucontrol.desktop": ("Sound", "Choose speakers, microphones and app volumes"),
     "blueman-manager.desktop": ("Bluetooth Devices", "Pair and manage Bluetooth devices"),
     "nm-connection-editor.desktop": ("Network Connections", "Advanced network, VPN and Wi-Fi settings"),
+    # Easy to find when you search for "Razer" (Polychromatic is the Razer settings app).
+    "polychromatic.desktop": ("Razer Settings", "Razer lighting, DPI, polling rate and battery (Polychromatic)"),
 }
 HIDE = [
     "org.codeberg.dnkl.foot-server.desktop", "org.codeberg.dnkl.footclient.desktop", "lxpolkit.desktop",
