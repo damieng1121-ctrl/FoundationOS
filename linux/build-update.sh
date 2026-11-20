@@ -120,7 +120,7 @@ dconf update 2>/dev/null || true
 # Stoa start-up screen (Plymouth): set it up once the spinner theme's images are available.
 if [ -d /usr/share/plymouth/themes/spinner ] && [ -f /usr/share/plymouth/themes/stoa/stoa.plymouth ]; then
   for f in /usr/share/plymouth/themes/spinner/*.png; do
-    case "$(basename "$f")" in bgrt-fallback.png|watermark.png) ;; *) cp -n "$f" /usr/share/plymouth/themes/stoa/ ;; esac
+    case "$(basename "$f")" in bgrt-fallback.png|watermark.png) ;; *) [ -e "/usr/share/plymouth/themes/stoa/$(basename "$f")" ] || cp "$f" /usr/share/plymouth/themes/stoa/ ;; esac
   done
   if [ "$(readlink -f /etc/alternatives/default.plymouth 2>/dev/null)" != /usr/share/plymouth/themes/stoa/stoa.plymouth ]; then
     update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
