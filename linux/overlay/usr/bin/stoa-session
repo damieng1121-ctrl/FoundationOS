@@ -56,6 +56,12 @@ if [ "$1" = "--x11" ] || { [ -n "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; }; th
   exit $rc
 fi
 
+# Remember when a real PC (not a VM) is drawing in software: Stoa Doctor explains and offers the driver fix.
+SLOW="${XDG_CACHE_HOME:-$HOME/.cache}/stoa/software-rendering"
+mkdir -p "$(dirname "$SLOW")"
+rm -f "$SLOW"
+[ "$virt" = none ] && [ "${WLR_RENDERER:-}" = pixman ] && echo "no-render-node" > "$SLOW"
+
 start=$(date +%s)
 log "starting: $* (WLR_RENDERER=${WLR_RENDERER:-auto})"
 "$@" >> "$LOG" 2>&1
@@ -67,6 +73,7 @@ if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - start )) -lt 15 ] && [ "${WLR_RENDERER
   export WLR_RENDERER=pixman
   export WLR_NO_HARDWARE_CURSORS=1
   log "retrying with software rendering"
+  [ "$virt" = none ] && echo "gpu-renderer-failed" > "$SLOW"
   "$@" >> "$LOG" 2>&1
   rc=$?
   log "labwc exited with code $rc"

@@ -170,8 +170,6 @@ class Taskbar(Gtk.Window):
 
     # ---------------------------------------------------------------- apps
     def refresh_apps(self):
-        for c in self.app_box.get_children():
-            c.destroy()
         groups = self.windows.by_app()
         entries = []  # (desktop_app or None, key, [windows])
         used = set()
@@ -189,9 +187,28 @@ class Taskbar(Gtk.Window):
             if app_id in used:
                 continue
             entries.append((apps.for_app_id(app_id), app_id, wl))
+        # Only rebuild the buttons when the set of apps, windows or the active one changes. A window that just
+        # changed its title (music players, browsers, timers) only updates that button's tooltip; rebuilding
+        # everything each time made the taskbar - and the pointer over it - sluggish.
+        sig = tuple((key, tuple(w["id"] for w in ws), any(w.get("active") and not w.get("minimized") for w in ws))
+                    for _a, key, ws in entries)
+        if sig == getattr(self, "_sig", None):
+            for (a, key, ws), b in zip(entries, self.app_box.get_children()):
+                b.set_tooltip_text(self._title(a, key, ws))
+            return
+        self._sig = sig
+        for c in self.app_box.get_children():
+            c.destroy()
         for a, key, ws in entries:
             self.app_box.pack_start(self._app_button(a, key, ws), False, False, 0)
         self.app_box.show_all()
+
+    @staticmethod
+    def _title(a, key, ws):
+        title = (a.get_name() if a else key)
+        if ws:
+            title += "\n" + "\n".join("• " + (w.get("title") or "") for w in ws[:5])
+        return title
 
     def _app_button(self, a, key, ws):
         b = theme.css(Gtk.Button(), "fs-tb-btn", "fs-app")
@@ -215,10 +232,7 @@ class Taskbar(Gtk.Window):
         o.add_overlay(dot)
         o.set_overlay_pass_through(dot, True)
         b.add(o)
-        title = (a.get_name() if a else key)
-        if ws:
-            title += "\n" + "\n".join("• " + (w.get("title") or "") for w in ws[:5])
-        b.set_tooltip_text(title)
+        b.set_tooltip_text(self._title(a, key, ws))
         b.connect("clicked", lambda *_: self._click(a, key, ws))
         b.connect("button-press-event", lambda w, e: self._press(e, a, key, ws))
         return b

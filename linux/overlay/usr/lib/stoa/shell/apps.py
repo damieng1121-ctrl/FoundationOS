@@ -135,8 +135,28 @@ def for_app_id(app_id):
     return found
 
 
+_ICON_CACHE = {}
+
+
 def sized_icon(gicon, size):
-    """A Gtk.Image of exactly size x size pixels, whatever sizes the icon's files come in."""
+    """A Gtk.Image of exactly size x size pixels, whatever sizes the icon's files come in (cached)."""
+    from gi.repository import Gtk
+    key = (gicon.to_string() if gicon else "", size)
+    pb = _ICON_CACHE.get(key)
+    if pb is None:
+        img = _sized_icon_uncached(gicon, size)
+        pb = img.get_pixbuf()
+        if pb is None:
+            return img
+        if len(_ICON_CACHE) > 400:
+            _ICON_CACHE.clear()
+        _ICON_CACHE[key] = pb
+    img = Gtk.Image.new_from_pixbuf(pb)
+    img.set_size_request(size, size)
+    return img
+
+
+def _sized_icon_uncached(gicon, size):
     from gi.repository import GdkPixbuf, Gtk
     theme = Gtk.IconTheme.get_default()
     pb = None

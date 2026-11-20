@@ -15,7 +15,19 @@ class Windows:
         self.wins = {}  # id -> dict
         self.order = []  # ids, oldest first
         self.proc = None
+        self._pending = None
         self._start()
+
+    def _changed(self):
+        # Wayland reports each window change as several events (title, app id, state, done); a busy app can
+        # change its title many times a second. Coalesce them into one taskbar update every 150 ms at most.
+        if self._pending is None:
+            self._pending = GLib.timeout_add(150, self._flush)
+
+    def _flush(self):
+        self._pending = None
+        self.on_change()
+        return False
 
     def _start(self):
         if not os.path.exists(HELPER) and not shutil.which("stoa-toplevels"):
@@ -50,13 +62,15 @@ class Windows:
             wid = ev["id"]
             if wid not in self.wins:
                 self.order.append(wid)
+            if self.wins.get(wid) == ev:
+                return  # nothing actually changed
             self.wins[wid] = ev
-            self.on_change()
+            self._changed()
         elif ev.get("ev") == "closed":
             self.wins.pop(ev["id"], None)
             if ev["id"] in self.order:
                 self.order.remove(ev["id"])
-            self.on_change()
+            self._changed()
 
     def send(self, op, wid):
         if self.proc and self.proc.stdin:

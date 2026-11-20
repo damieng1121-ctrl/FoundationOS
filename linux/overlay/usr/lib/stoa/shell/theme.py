@@ -4,7 +4,9 @@ from gi.repository import Gdk, Gtk
 ACCENT = "#4f8cff"
 
 CSS = b"""
-* { font-family: "Inter", "Noto Sans", sans-serif; }
+/* No hover/press animations in the shell: each one redraws the bar or menu for ~200 ms per widget the pointer
+   crosses, which made the pointer feel sluggish over the taskbar and menus on slower PCs. */
+* { font-family: "Inter", "Noto Sans", sans-serif; transition: none; animation: none; }
 window.fs-transparent, .fs-transparent { background-color: transparent; }
 /* Our buttons draw their own look: drop the GTK theme's gradients, borders and shadows. */
 button.fs-tb-btn, button.fs-qs-tile, button.fs-tile, button.fs-row, button.fs-link, button.fs-power-btn {
@@ -127,6 +129,7 @@ def apply():
     settings = Gtk.Settings.get_default()
     if settings:
         settings.set_property("gtk-application-prefer-dark-theme", True)
+        settings.set_property("gtk-enable-animations", False)
 
 
 def css(widget, *classes):

@@ -169,6 +169,20 @@ def check_virus_signatures():
     return None
 
 
+def check_graphics():
+    flag = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "stoa", "software-rendering")
+    if not os.path.exists(flag):
+        return None
+    _rc, lspci, _ = _run("lspci")
+    nvidia = "NVIDIA" in lspci
+    detail = ("The desktop is drawing in software instead of on the graphics card, so the pointer, taskbar and "
+              "menus feel slow. ")
+    detail += ("This PC has an NVIDIA card: installing its driver (and restarting) usually fixes it." if nvidia else
+               "Installing the recommended graphics driver and restarting usually fixes it.")
+    return Issue("graphics", "Graphics are running in slow mode", detail, "problem", "Install graphics driver",
+                 open(flag).read() + "\n" + "\n".join(l for l in lspci.splitlines() if "VGA" in l or "3D" in l))
+
+
 def check_restart():
     if os.path.exists("/var/run/reboot-required"):
         return Issue("restart", "Restart to finish a security update",
@@ -188,9 +202,9 @@ def check_crashes():
                  "warning", None, "Crash reports: " + ", ".join(os.path.basename(f) for f in recent[:5]))
 
 
-CHECKS = [check_restart, check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
+CHECKS = [check_graphics, check_restart, check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
           check_temperature, check_virus_signatures, check_crashes]
-NAMES = {"check_restart": "Security updates", "check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
+NAMES = {"check_graphics": "Graphics", "check_restart": "Security updates", "check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
          "check_internet": "Internet", "check_audio": "Sound", "check_memory": "Memory",
          "check_temperature": "Temperature", "check_virus_signatures": "Virus protection",
          "check_crashes": "App crashes"}
@@ -261,6 +275,11 @@ def fix(issue_id):
     if issue_id == "memory":
         subprocess.Popen(["stoa-taskmgr"], start_new_session=True)
         return True, "Task Manager is open, sorted by what's using the most."
+    if issue_id == "graphics":
+        ok, msg = _root("drivers")
+        if ok:
+            return True, "Graphics driver installed. Restart the PC to use it."
+        return False, f"That didn't work: {msg}"
     if issue_id == "restart":
         subprocess.Popen(["systemctl", "reboot"], start_new_session=True)
         return True, "Restarting..."
