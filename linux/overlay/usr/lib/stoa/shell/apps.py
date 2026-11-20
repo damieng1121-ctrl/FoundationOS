@@ -11,7 +11,7 @@ DEFAULT_TASKBAR_PINS = ["thunar.desktop", "org.gnome.Epiphany.desktop", "google-
                         "stoa-store.desktop", "org.codeberg.dnkl.foot.desktop"]
 DEFAULT_START_PINS = ["stoa-assistant.desktop", "thunar.desktop", "org.gnome.Epiphany.desktop", "google-chrome.desktop",
                       "stoa-store.desktop", "stoa-settings.desktop", "org.xfce.mousepad.desktop",
-                      "org.gnome.Calculator.desktop", "org.xfce.ristretto.desktop", "org.gnome.SystemMonitor.desktop",
+                      "org.gnome.Calculator.desktop", "org.xfce.ristretto.desktop", "stoa-taskmgr.desktop",
                       "org.codeberg.dnkl.foot.desktop", "atril.desktop", "vlc.desktop", "fpkg-webapp-microsoft-word.desktop",
                       "fpkg-webapp-microsoft-excel.desktop", "fpkg-webapp-google-drive.desktop"]
 

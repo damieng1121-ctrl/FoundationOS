@@ -252,6 +252,39 @@ def os_update(only_if_auto=False):
             os.remove(os.path.join("/var/cache/stoa", old))
 
 
+def apply_edition(name, chroot=False):
+    """System side of an edition: family-safe DNS, automatic security updates, screen lock, Stoa AI mode."""
+    editions = json.load(open("/usr/share/stoa/editions.json"))
+    if name not in editions:
+        sys.exit(f"unknown edition: {name}")
+    s = editions[name]["settings"]
+    os.makedirs("/etc/stoa", exist_ok=True)
+    with open("/etc/stoa/edition", "w") as f:
+        f.write(name + "\n")
+    with open("/etc/stoa/edition.json", "w") as f:
+        json.dump({"edition": name, **s}, f, indent=1)
+    dns = "/etc/NetworkManager/conf.d/60-stoa-family-dns.conf"
+    if s.get("safe_dns"):
+        os.makedirs(os.path.dirname(dns), exist_ok=True)
+        with open(dns, "w") as f:  # Cloudflare for Families: blocks malware and adult content for the whole PC
+            f.write("# Stoa Education: family-safe internet for the whole PC (Settings > Edition to change)\n"
+                    "[global-dns-domain-*]\nservers=1.1.1.3,1.0.0.3,2606:4700:4700::1113,2606:4700:4700::1003\n")
+    elif os.path.exists(dns):
+        os.remove(dns)
+    auto = "/etc/apt/apt.conf.d/20auto-upgrades"
+    with open(auto, "w") as f:
+        on = "1" if s.get("auto_updates") else "0"
+        f.write(f'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "{on}";\n')
+    if s.get("auto_updates"):
+        open("/etc/stoa/auto-update", "w").close()
+    elif os.path.exists("/etc/stoa/auto-update"):
+        os.remove("/etc/stoa/auto-update")
+    with open("/etc/stoa/lock-minutes", "w") as f:
+        f.write(str(int(s.get("lock_minutes", 0))) + "\n")
+    if not chroot:
+        subprocess.run(["systemctl", "reload", "NetworkManager"], env=ENV, capture_output=True)
+
+
 def main():
     if os.geteuid() != 0:
         sys.exit("fpkg-helper must run as root")
@@ -316,6 +349,8 @@ def main():
         sh(["systemctl", "reboot"])
     elif op == "mount-drive" and args:
         mount_drive(args[0])
+    elif op == "edition" and args:
+        apply_edition(args[0], chroot="--chroot" in args)
     elif op == "os-update":
         os_update()
     elif op == "os-update-auto" and args and args[0] in ("on", "off"):

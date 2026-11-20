@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Stoa editions: the same Stoa, set up for everyday life, education, business or gaming.
+
+  stoa-edition                 choose an edition (Settings > Edition)
+  stoa-edition --current       print the current edition
+  stoa-edition apply NAME      switch to an edition: its apps, taskbar, settings and Stoa AI mode
+"""
+import json
+import os
+import subprocess
+import sys
+
+EDITIONS = "/usr/share/stoa/editions.json"
+HELPER = "/usr/lib/stoa/fpkg-helper"
+CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+PINS = os.path.join(CONFIG, "stoa", "pinned.json")
+CHOSEN = os.path.join(CONFIG, "stoa", "edition-chosen")
+
+
+def editions():
+    return json.load(open(EDITIONS))
+
+
+def current():
+    try:
+        name = open("/etc/stoa/edition").read().strip()
+        return name if name in editions() else "standard"
+    except OSError:
+        return "standard"
+
+
+def set_taskbar(name):
+    """Pin the edition's apps to the taskbar (apps appear there as soon as they're installed)."""
+    try:
+        data = json.load(open(PINS))
+    except (OSError, ValueError):
+        data = {}
+    data["taskbar"] = editions()[name]["taskbar"]
+    os.makedirs(os.path.dirname(PINS), exist_ok=True)
+    json.dump(data, open(PINS, "w"), indent=2)
+
+
+def mark_chosen(name):
+    os.makedirs(os.path.dirname(CHOSEN), exist_ok=True)
+    open(CHOSEN, "w").write(name + "\n")
+
+
+def apply_cli(name):
+    if name not in editions():
+        sys.exit(f"Unknown edition {name}. Choose: {', '.join(editions())}")
+    if subprocess.run(["pkexec", HELPER, "edition", name]).returncode:
+        sys.exit("The edition wasn't changed.")
+    set_taskbar(name)
+    mark_chosen(name)
+    subprocess.run(["fpkg", "install", "-y", *editions()[name]["apps"]])
+    print(f"This PC is now {editions()[name]['name']}. Sign out and back in to finish.")
+
+
+def gui(first_run=False):
+    sys.path.insert(0, "/usr/lib/stoa")
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk, Pango
+    import stoa_ui as ui
+
+    ui.apply_css()
+    eds, cur = editions(), current()
+    win = Gtk.Window(title="Stoa Edition")
+    win.set_default_size(*ui.fit_size(1180, 760))
+    win.set_icon_name("stoa")
+    ui.css(win, "f-dark")
+    win.connect("destroy", Gtk.main_quit)
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+    outer.set_border_width(22)
+    win.add(outer)
+    outer.pack_start(ui.css(Gtk.Label(label="What will you use this PC for?" if first_run else "Stoa Edition",
+                                      xalign=0), "f-title"), False, False, 0)
+    outer.pack_start(ui.css(Gtk.Label(label="Every edition is the same Stoa - this sets up the right apps, settings and "
+                                      "Stoa AI for you. You can switch at any time in Settings > Edition, and get any "
+                                      "app from the Store whichever you choose.", xalign=0, wrap=True), "f-muted"),
+                     False, False, 0)
+    grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4, min_children_per_line=1,
+                       column_spacing=12, row_spacing=12, homogeneous=True)
+    sw = Gtk.ScrolledWindow(vexpand=True)
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    sw.add(grid)
+    outer.pack_start(sw, True, True, 0)
+
+    def choose(name):
+        def done(rc):
+            if rc == 0:
+                set_taskbar(name)
+                mark_chosen(name)
+                ui.CommandRunner(win, f"Setting up {eds[name]['name']}",
+                                 ["fpkg", "install", "-y", *eds[name]["apps"]], on_done=lambda _rc: finished(name))
+        ui.CommandRunner(win, f"Switching to {eds[name]['name']}", ["pkexec", HELPER, "edition", name], on_done=done)
+
+    def finished(name):
+        d = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.INFO,
+                              text=f"This PC is now {eds[name]['name']}")
+        d.format_secondary_text("Sign out and back in to see your new taskbar and settings.")
+        d.add_button("Later", Gtk.ResponseType.CANCEL)
+        d.add_button("Sign out now", Gtk.ResponseType.OK)
+        if d.run() == Gtk.ResponseType.OK:
+            subprocess.Popen(["labwc", "--exit"])
+        d.destroy()
+        win.destroy()
+
+    for key, e in eds.items():
+        card = ui.css(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8), "f-card")
+        card.set_size_request(210, -1)
+        bar = Gtk.Box()
+        bar.set_size_request(-1, 5)
+        prov = Gtk.CssProvider()
+        prov.load_from_data(f"* {{ background-color: {e['colour']}; border-radius: 3px; }}".encode())
+        bar.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        card.pack_start(bar, False, False, 0)
+        img = Gtk.Image.new_from_icon_name(e["icon"], Gtk.IconSize.DIALOG)
+        img.set_pixel_size(44)
+        img.set_halign(Gtk.Align.START)
+        card.pack_start(img, False, False, 0)
+        card.pack_start(ui.css(Gtk.Label(label=e["name"], xalign=0), "f-h2"), False, False, 0)
+        card.pack_start(ui.css(Gtk.Label(label=e["tagline"], xalign=0, wrap=True, max_width_chars=20), "f-muted"),
+                        False, False, 0)
+        card.pack_start(Gtk.Label(label=e["about"], xalign=0, wrap=True, max_width_chars=20), False, False, 4)
+        for f in e["features"]:
+            lab = ui.css(Gtk.Label(label="•  " + f, xalign=0, wrap=True, max_width_chars=20), "f-muted")
+            lab.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+            card.pack_start(lab, False, False, 0)
+        if key == cur and not first_run:
+            b = ui.css(Gtk.Button(label="Your edition"), "f-ghost")
+            b.set_sensitive(False)
+        else:
+            b = ui.css(Gtk.Button(label=f"Use {e['name']}"), "f-primary")
+            b.connect("clicked", lambda _b, k=key: choose(k))
+        card.pack_end(b, False, False, 0)
+        grid.add(card)
+    if first_run:
+        skip = ui.css(Gtk.Button(label="Not now", halign=Gtk.Align.START), "f-ghost")
+        skip.connect("clicked", lambda *_: (mark_chosen(cur), win.destroy()))
+        outer.pack_start(skip, False, False, 0)
+    win.show_all()
+    Gtk.main()
+
+
+def main():
+    a = sys.argv[1:]
+    if a and a[0] in ("-h", "--help"):
+        print(__doc__)
+    elif a and a[0] == "--current":
+        print(current())
+    elif a and a[0] == "apply" and len(a) > 1:
+        apply_cli(a[1])
+    else:
+        gui(first_run="--first-run" in a)
+
+
+if __name__ == "__main__":
+    main()

@@ -12,6 +12,8 @@ stoa-protect watch >/dev/null 2>&1 &
 # Stoa AI, loaded hidden so the taskbar button opens it instantly.
 (sleep 8; stoa-assistant --preload) >/dev/null 2>&1 &
 stoa-welcome --autostart >/dev/null 2>&1 &
+# Screen lock when away (set by the edition, e.g. 5 minutes in Stoa Business).
+stoa-idle-lock >/dev/null 2>&1 &
 # After a Stoa update: say what's new (once).
 stoa-updates --whats-new >/dev/null 2>&1 &
 # Stoa Doctor: watch for problems (full drive, broken update, no sound...) and offer to fix them.

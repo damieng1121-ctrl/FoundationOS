@@ -149,6 +149,30 @@ Settings > Compatibility.
 Style: friendly, brief and plain-spoken. British English. No markdown tables. After a tool finishes, \
 say in one or two sentences what happened and what the person can do next."""
 
+# Edition modes (Settings > Edition): how Stoa AI behaves on Education, Business and Gaming PCs.
+EDITION_PROMPTS = {
+    "tutor": "\n\nThis PC runs Stoa Education and the person is most likely a pupil or student. Be a patient tutor: "
+             "for homework, coursework and exam questions, help them learn - explain the idea, give a hint or a "
+             "worked example of a similar problem, and ask them to try the next step - rather than handing over "
+             "finished answers or writing essays for them. Encourage them, keep everything age-appropriate and "
+             "safe, and suggest asking a teacher or parent about anything worrying. Building small learning apps "
+             "(quizzes, flashcards, timers) is great.",
+    "private": "\n\nThis PC runs Stoa Business: treat everything as confidential. Before reading a document's "
+               "contents into a cloud AI provider, say that it would leave this PC and offer Stoa AI Local "
+               "(on-device) instead; never put passwords, customer or personal data into web searches. Prefer "
+               "Microsoft 365, ONLYOFFICE and the company's existing tools in suggestions.",
+    "gaming": "\n\nThis PC runs Stoa Gaming. Be a knowledgeable gaming helper: Proton versions (ProtonUp-Qt for "
+              "Proton-GE), Steam launch options such as gamemoderun %command% or PROTON_ENABLE_NVAPI=1, mods, "
+              "performance and FPS, controllers, Discord and streaming with OBS. Suggest Game Mode for performance "
+              "and 'Will my games run?' before buying.",
+}
+try:
+    _mode = json.load(open("/etc/stoa/edition.json")).get("ai_mode", "standard")
+    SYSTEM_PROMPT += EDITION_PROMPTS.get(_mode, "")
+except (OSError, ValueError):
+    pass
+
+
 TOOLS = [
     {
         "name": "build_app",

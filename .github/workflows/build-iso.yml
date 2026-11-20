@@ -2,6 +2,10 @@ name: Build Stoa ISO
 
 on:
   workflow_dispatch:
+    inputs:
+      edition:
+        description: "Edition to build (standard, education, business, gaming, or all)"
+        default: standard
   workflow_run:
     workflows: ["Build Stoa kernel"]
     types: [completed]
@@ -61,6 +65,11 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        # Version tags build all four editions; other builds the standard one (or what was asked for).
+        edition: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || inputs.edition == 'all') && '["standard","education","business","gaming"]' || format('["{0}"]', inputs.edition || 'standard')) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,13 +115,13 @@ jobs:
       - name: Build ISO
         run: |
           sudo mkdir -p /mnt/stoa
-          sudo WORK=/mnt/stoa/work OUT="$PWD/linux/out" SQUASH_COMP=xz ./linux/build-iso.sh
+          sudo WORK=/mnt/stoa/work OUT="$PWD/linux/out" SQUASH_COMP=xz EDITION="${{ matrix.edition }}" ./linux/build-iso.sh
           ls -lh linux/out
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: stoa-os-iso
+          name: ${{ matrix.edition == 'standard' && 'stoa-os-iso' || format('stoa-{0}-iso', matrix.edition) }}
           path: linux/out/*
           compression-level: 0
           retention-days: 30

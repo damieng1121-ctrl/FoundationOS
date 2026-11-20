@@ -19,8 +19,20 @@ STARTER = [("google-chrome", "Google Chrome"), ("microsoft-365", "Microsoft 365 
            ("stoa-ai-local", "Stoa AI on this PC - private, works offline (1-5 GB download)")]
 
 
+def edition():
+    """(key, info) of this PC's edition (Settings > Edition, or the edition the USB stick was made for)."""
+    import json
+    try:
+        eds = json.load(open("/usr/share/stoa/editions.json"))
+        key = open("/etc/stoa/edition").read().strip()
+        return key, eds.get(key, eds["standard"])
+    except (OSError, ValueError, KeyError):
+        return "standard", {"name": "Stoa", "apps": []}
+
+
 def main():
     live = ui.is_live()
+    ed_key, ed = edition()
     if "--autostart" in sys.argv and not live and os.path.exists(DONE):
         return
     ui.apply_css()
@@ -33,7 +45,7 @@ def main():
     head = ui.css(Gtk.Box(spacing=16), "f-header")
     head.pack_start(ui.logo_image(64), False, False, 0)
     tb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-    tb.pack_start(ui.css(Gtk.Label(label="Welcome to Stoa", xalign=0), "f-title"), False, False, 0)
+    tb.pack_start(ui.css(Gtk.Label(label=f"Welcome to {ed['name']}", xalign=0), "f-title"), False, False, 0)
     ver = open("/usr/share/stoa/VERSION").read().strip() if os.path.exists("/usr/share/stoa/VERSION") else ""
     tb.pack_start(ui.css(Gtk.Label(label=f"Version {ver} \"Bedrock\"", xalign=0), "f-subtitle"), False, False, 0)
     head.pack_start(tb, True, True, 0)
@@ -56,6 +68,20 @@ def main():
         body.pack_start(Gtk.Label(label="Pick the apps you'd like. You can always get more from the Stoa Store, "
                                   "or double-click any Windows .exe / .msi installer to install it.",
                                   wrap=True, xalign=0, max_width_chars=70), False, False, 0)
+        # Which edition: Education, Business or Gaming set up the right apps, settings and Stoa AI.
+        if not os.path.exists(os.path.expanduser("~/.config/stoa/edition-chosen")):
+            edc = ui.css(Gtk.Box(spacing=12), "f-card")
+            ev = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            ev.pack_start(ui.css(Gtk.Label(label=f"This PC is set up as {ed['name']}", xalign=0), "f-h2"),
+                          False, False, 0)
+            ev.pack_start(ui.css(Gtk.Label(label="Using it for school, work or gaming? Pick an edition and Stoa sets "
+                                           "up the right apps, settings and Stoa AI.", xalign=0, wrap=True),
+                                 "f-muted"), False, False, 0)
+            edc.pack_start(ev, True, True, 0)
+            eb = ui.css(Gtk.Button(label="Choose edition", valign=Gtk.Align.CENTER), "f-ghost")
+            eb.connect("clicked", lambda *_: ui.spawn("stoa-edition", "--first-run"))
+            edc.pack_end(eb, False, False, 0)
+            body.pack_start(edc, False, False, 0)
         # Coming from Windows: offer to bring files, bookmarks and games across first.
         mig = ui.css(Gtk.Box(spacing=12), "f-card")
         mv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -69,9 +95,17 @@ def main():
         mig.pack_end(mb, False, False, 0)
         body.pack_start(mig, False, False, 6)
         checks = []
-        for app_id, label in STARTER:
+        starters = list(STARTER)
+        if ed_key != "standard":
+            import yaml
+            try:
+                names = {a["id"]: a["name"] for a in yaml.safe_load(open("/usr/share/stoa/catalog.yaml"))["apps"]}
+            except (OSError, ValueError, KeyError):
+                names = {}
+            starters = [(i, names.get(i, i)) for i in ed["apps"]][:10]
+        for app_id, label in starters:
             c = Gtk.CheckButton(label=label)
-            c.set_active(app_id in ("google-chrome", "microsoft-365", "google-drive"))
+            c.set_active(ed_key != "standard" or app_id in ("google-chrome", "microsoft-365", "google-drive"))
             c.app_id = app_id
             checks.append(c)
             body.pack_start(c, False, False, 0)

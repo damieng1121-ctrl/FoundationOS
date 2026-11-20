@@ -1,0 +1,61 @@
+{
+ "standard": {
+  "name": "Stoa",
+  "tagline": "For everyday life",
+  "icon": "computer",
+  "colour": "#4f8cff",
+  "about": "Browsing, Office files, photos, video calls and the odd game.",
+  "features": ["Microsoft 365 and Google apps", "Stoa AI", "Everything else is one click away in the Store"],
+  "apps": ["google-chrome", "microsoft-365", "vlc"],
+  "taskbar": ["thunar.desktop", "google-chrome.desktop", "stoa-store.desktop", "fpkg-webapp-microsoft-365.desktop"],
+  "settings": {"safe_dns": false, "auto_updates": false, "lock_minutes": 0, "ai_mode": "standard"}
+ },
+ "education": {
+  "name": "Stoa Education",
+  "tagline": "For pupils, students and schools",
+  "icon": "applications-science",
+  "colour": "#3fb37f",
+  "about": "Learning apps, safe browsing, and a Stoa AI that teaches instead of doing the homework.",
+  "features": ["Scratch, GeoGebra, GCompris, Stellarium, Anki, BBC Bitesize, Thonny (Python)",
+               "Family-safe internet: adult and harmful sites blocked for the whole PC",
+               "Stoa AI tutor mode: explains step by step, asks questions back, won't just hand over answers",
+               "Microsoft 365, Google Classroom-ready Chrome and ONLYOFFICE for assignments"],
+  "apps": ["google-chrome", "microsoft-365", "onlyoffice", "scratch", "geogebra", "gcompris", "stellarium", "anki",
+           "bbc-bitesize", "thonny", "duolingo", "tuxpaint"],
+  "taskbar": ["thunar.desktop", "google-chrome.desktop", "fpkg-webapp-bbc-bitesize.desktop",
+              "org.geogebra.GeoGebra.desktop", "fpkg-webapp-scratch.desktop", "stoa-store.desktop"],
+  "settings": {"safe_dns": true, "auto_updates": true, "lock_minutes": 0, "ai_mode": "tutor"}
+ },
+ "business": {
+  "name": "Stoa Business",
+  "tagline": "For work, offices and small businesses",
+  "icon": "x-office-document",
+  "colour": "#7a4fe0",
+  "about": "Office, meetings and security set up for work - with your data kept private.",
+  "features": ["Microsoft 365 (Word, Excel, PowerPoint, Outlook, Teams), Zoom, Slack, ONLYOFFICE",
+               "Security updates install automatically; screen locks after 5 minutes away",
+               "Private Stoa AI: prefers the on-device model and asks before sending files to a cloud AI",
+               "Bitwarden passwords, Proton VPN, remote support (AnyDesk, Remmina), OneDrive"],
+  "apps": ["microsoft-365", "microsoft-teams", "microsoft-outlook", "onlyoffice", "zoom", "slack", "bitwarden",
+           "proton-vpn", "anydesk", "remmina", "onedrive-sync", "google-chrome"],
+  "taskbar": ["thunar.desktop", "google-chrome.desktop", "fpkg-webapp-microsoft-outlook.desktop",
+              "fpkg-webapp-microsoft-teams.desktop", "fpkg-webapp-microsoft-365.desktop", "stoa-store.desktop"],
+  "settings": {"safe_dns": false, "auto_updates": true, "lock_minutes": 5, "ai_mode": "private"}
+ },
+ "gaming": {
+  "name": "Stoa Gaming",
+  "tagline": "For PC gamers",
+  "icon": "applications-games",
+  "colour": "#e0567a",
+  "about": "Steam and every launcher ready, the right graphics drivers, and Game Mode one click away.",
+  "features": ["Steam (with Proton), Heroic (Epic, GOG, Amazon), Lutris (EA, Ubisoft, Battle.net)",
+               "Graphics drivers set up for your card; ProtonUp-Qt for the newest Proton",
+               "Discord, OBS Studio for streaming, OpenRGB lighting, Razer support",
+               "Game Mode, 'Will my games run?' ratings, and Stoa AI that knows games and mods"],
+  "apps": ["steam", "heroic", "lutris", "protonup-qt", "discord", "obs-studio", "graphics-drivers", "openrgb",
+           "google-chrome"],
+  "taskbar": ["thunar.desktop", "google-chrome.desktop", "com.valvesoftware.Steam.desktop",
+              "com.heroicgameslauncher.hgl.desktop", "com.discordapp.Discord.desktop", "stoa-store.desktop"],
+  "settings": {"safe_dns": false, "auto_updates": false, "lock_minutes": 0, "ai_mode": "gaming"}
+ }
+}
