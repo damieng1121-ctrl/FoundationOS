@@ -379,8 +379,15 @@ def main():
         sh(["apt-get", "update"])
         sh(APT + ["install", *pkgs(args)])
     elif op == "apt-remove":
-        sh(APT + ["remove", *pkgs(args)])
-        sh(APT + ["autoremove"])
+        # Only remove what's actually installed: apt refuses the whole removal if any one package is missing
+        # (e.g. an app that never finished installing).
+        present = [p for p in pkgs(args) if "install ok installed" in subprocess.run(
+            ["dpkg-query", "-W", "-f=${Status}", p], env=ENV, capture_output=True, text=True).stdout]
+        if present:
+            sh(APT + ["remove", *present])
+            sh(APT + ["autoremove"])
+        else:
+            print("Nothing to remove - it isn't installed.", flush=True)
     elif op == "deb-install":
         path = os.path.realpath(args[0])
         if not path.endswith(".deb") or not os.path.isfile(path):
