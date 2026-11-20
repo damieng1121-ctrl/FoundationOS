@@ -41,6 +41,11 @@ log "Staging Stoa ${VERSION}"
 cp -a "$HERE/overlay/." "$STAGE/"
 find "$STAGE" -name "__pycache__" -prune -exec rm -rf {} +
 mkdir -p "$STAGE/usr/share/stoa"
+# The update signing key's public half: from then on this PC only accepts updates signed with it.
+if [ -n "${STOA_SIGNING_KEY:-}" ]; then
+  "$HERE/tools/sign-manifest.sh" --public > "$STAGE/usr/share/stoa/update-key.pem"
+  log "Updates from this build on must be signed"
+fi
 echo "$VERSION" > "$STAGE/usr/share/stoa/VERSION"
 # What's new: the recent change titles, shown after updating (Updates app, sign-in notification).
 git -C "$HERE" log -25 --no-merges --format='%s' 2>/dev/null \
@@ -83,7 +88,7 @@ Depends: python3 (>= 3.12), python3-gi, python3-gi-cairo, python3-yaml, gir1.2-g
  avahi-daemon, libnss-mdns, system-config-printer, simple-scan, sane-airscan,
  printer-driver-gutenprint, printer-driver-hpcups, hplip, printer-driver-brlaser,
  printer-driver-splix, printer-driver-foo2zjs, printer-driver-c2esp, printer-driver-ptouch, openprinting-ppds,
- systemd-zram-generator, ntfs-3g, os-prober, pciutils, usbutils, p7zip-full, innoextract, unar, vulkan-tools, webp-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, libavif-gdk-pixbuf, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
+ systemd-zram-generator, ntfs-3g, os-prober, unattended-upgrades, openssl, pciutils, usbutils, p7zip-full, innoextract, unar, vulkan-tools, webp-pixbuf-loader, heif-gdk-pixbuf, libheif-plugin-libde265, libavif-gdk-pixbuf, libvulkan1, libgomp1, ufw, apparmor, apparmor-utils, clamav, clamav-freshclam, inotify-tools, cryptsetup, cryptsetup-initramfs, clevis, clevis-luks, clevis-tpm2, clevis-initramfs, tpm2-tools
 Section: x11
 Priority: optional
 Description: Stoa desktop, apps and settings
@@ -125,6 +130,8 @@ if [ -d /usr/share/plymouth/themes/spinner ] && [ -f /usr/share/plymouth/themes/
   fi
 fi
 sysctl --system >/dev/null 2>&1 || true
+# Security updates install by themselves (every edition).
+[ -f /etc/apt/apt.conf.d/20auto-upgrades ] || printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
 # Start-up menu: find Windows alongside Stoa (GRUB settings in /etc/default/grub.d/60-stoa-dualboot.cfg).
 [ -f /boot/grub/grub.cfg ] && update-grub >/dev/null 2>&1 || true
 # Xfce's "Set as wallpaper" in Files only works with Xfce's desktop; Stoa has its own (Files > right-click >

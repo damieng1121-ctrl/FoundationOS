@@ -30,6 +30,8 @@ jobs:
           fetch-depth: 0  # the version number counts commits
 
       - name: Build update package
+        env:
+          STOA_SIGNING_KEY: ${{ secrets.STOA_SIGNING_KEY }}  # puts the public key in the package
         run: |
           sudo apt-get update && sudo apt-get install -y python3-pip cmake g++ glslc libvulkan-dev spirv-headers
           ./linux/build-update.sh
@@ -42,21 +44,40 @@ jobs:
           path: linux/out/stoa-desktop_*.deb
           compression-level: 0
 
-      # Online updates: Stoa PCs check latest.json in the rolling "stoa-update" release and install the package
-      # from it (verified by SHA-256). Needs Settings > Actions > General > Workflow permissions: Read and write.
-      - name: Publish for automatic updates
-        continue-on-error: true
+
+  publish-update:
+    # Online updates: Stoa PCs check latest.json (+ its signature) in the rolling "stoa-update" release and
+    # install the package from it. Runs in the "stoa-updates" environment: add yourself as a required reviewer
+    # there (Settings > Environments) to approve each update before it reaches anyone's PC.
+    needs: update
+    runs-on: ubuntu-24.04
+    environment: stoa-updates
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30  # what's new = recent change titles
+      - uses: actions/download-artifact@v4
+        with:
+          name: stoa-update
+          path: linux/out
+      - name: Sign and publish
         env:
           GH_TOKEN: ${{ github.token }}
+          STOA_SIGNING_KEY: ${{ secrets.STOA_SIGNING_KEY }}
         run: |
           deb="$(ls linux/out/stoa-desktop_*.deb | head -1)"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/stoa-update"
           python3 linux/tools/update-manifest.py "$deb" "$base" > latest.json
           cat latest.json
+          files="$deb latest.json"
+          if [ -n "$STOA_SIGNING_KEY" ]; then
+            sh linux/tools/sign-manifest.sh latest.json && files="$files latest.json.sig"
+          else
+            echo "::warning::STOA_SIGNING_KEY isn't set - publishing an unsigned update (see linux/tools/make-update-key.sh)"
+          fi
           gh release view stoa-update >/dev/null 2>&1 || gh release create stoa-update --prerelease \
             --title "Stoa update channel" --notes "Stoa installs this by itself (Updates app). Nothing to download here."
-          gh release upload stoa-update "$deb" latest.json --clobber
-          # keep only the newest package
+          gh release upload stoa-update $files --clobber
           gh release view stoa-update --json assets --jq '.assets[].name' \
             | grep '^stoa-desktop_' | grep -vx "$(basename "$deb")" \
             | while read -r old; do gh release delete-asset stoa-update "$old" -y; done
@@ -113,9 +134,12 @@ jobs:
         run: cargo build --release --manifest-path linux/shell/toplevels/Cargo.toml
 
       - name: Build ISO
+        env:
+          STOA_SIGNING_KEY: ${{ secrets.STOA_SIGNING_KEY }}
         run: |
           sudo mkdir -p /mnt/stoa
-          sudo WORK=/mnt/stoa/work OUT="$PWD/linux/out" SQUASH_COMP=xz EDITION="${{ matrix.edition }}" ./linux/build-iso.sh
+          sudo WORK=/mnt/stoa/work OUT="$PWD/linux/out" SQUASH_COMP=xz EDITION="${{ matrix.edition }}" \
+            STOA_SIGNING_KEY="$STOA_SIGNING_KEY" ./linux/build-iso.sh
           ls -lh linux/out
 
       - name: Upload ISO

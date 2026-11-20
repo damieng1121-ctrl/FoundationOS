@@ -169,6 +169,14 @@ def check_virus_signatures():
     return None
 
 
+def check_restart():
+    if os.path.exists("/var/run/reboot-required"):
+        return Issue("restart", "Restart to finish a security update",
+                     "Security fixes have been installed and take effect when the PC restarts. Save your work, then "
+                     "restart when it suits you.", "warning", "Restart now")
+    return None
+
+
 def check_crashes():
     recent = [f for f in glob.glob("/var/crash/*.crash") if time.time() - os.path.getmtime(f) < 86400]
     if not recent:
@@ -180,9 +188,9 @@ def check_crashes():
                  "warning", None, "Crash reports: " + ", ".join(os.path.basename(f) for f in recent[:5]))
 
 
-CHECKS = [check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
+CHECKS = [check_restart, check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
           check_temperature, check_virus_signatures, check_crashes]
-NAMES = {"check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
+NAMES = {"check_restart": "Security updates", "check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
          "check_internet": "Internet", "check_audio": "Sound", "check_memory": "Memory",
          "check_temperature": "Temperature", "check_virus_signatures": "Virus protection",
          "check_crashes": "App crashes"}
@@ -253,6 +261,9 @@ def fix(issue_id):
     if issue_id == "memory":
         subprocess.Popen(["stoa-taskmgr"], start_new_session=True)
         return True, "Task Manager is open, sorted by what's using the most."
+    if issue_id == "restart":
+        subprocess.Popen(["systemctl", "reboot"], start_new_session=True)
+        return True, "Restarting..."
     if issue_id == "signatures":
         ok, msg = _root("restart-service", "clamav-freshclam")
         return ok, "Downloading new virus signatures now." if ok else msg

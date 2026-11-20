@@ -31,6 +31,8 @@ shim-signed
 grub2-common
 efibootmgr
 os-prober
+# Security updates install automatically
+unattended-upgrades
 # Install alongside Windows: shrink NTFS partitions (ntfsresize)
 ntfs-3g
 dosfstools

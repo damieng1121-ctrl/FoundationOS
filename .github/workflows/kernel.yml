@@ -23,6 +23,8 @@ permissions:
 jobs:
   kernel:
     runs-on: ubuntu-24.04
+    outputs:
+      built: ${{ steps.ver.outputs.skip != 'true' }}
     timeout-minutes: 330
     env:
       GH_TOKEN: ${{ github.token }}
@@ -89,3 +91,37 @@ jobs:
           gh release create "$tag" kernel/out/*.deb kernel/out/SHA256SUMS --target "$GITHUB_SHA" \
             --title "Stoa kernel ${{ steps.ver.outputs.version }}" \
             --notes "Stoa kernel built from Ubuntu $SRC_PKG ${{ steps.ver.outputs.version }} with kernel/stoa.config."
+
+  publish-update:
+    # Security fixes reach installed PCs: the kernel goes to the same signed update channel as Stoa itself.
+    needs: kernel
+    if: needs.kernel.outputs.built == 'true'
+    runs-on: ubuntu-24.04
+    environment: stoa-updates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stoa-kernel
+          path: kernel/out
+      - name: Sign and publish to the update channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STOA_SIGNING_KEY: ${{ secrets.STOA_SIGNING_KEY }}
+        run: |
+          debs="$(ls kernel/out/linux-image-*stoa*.deb kernel/out/linux-headers-*stoa*.deb)"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/stoa-update"
+          python3 linux/tools/kernel-manifest.py "$base" $debs > kernel.json
+          cat kernel.json
+          files="$debs kernel.json"
+          if [ -n "$STOA_SIGNING_KEY" ]; then
+            sh linux/tools/sign-manifest.sh kernel.json && files="$files kernel.json.sig"
+          else
+            echo "::warning::STOA_SIGNING_KEY isn't set - publishing an unsigned kernel update"
+          fi
+          gh release view stoa-update >/dev/null 2>&1 || gh release create stoa-update --prerelease \
+            --title "Stoa update channel" --notes "Stoa installs this by itself (Updates app). Nothing to download here."
+          gh release upload stoa-update $files --clobber
+          keep="$(for d in $debs; do basename "$d"; done)"
+          gh release view stoa-update --json assets --jq '.assets[].name' | grep -E '^linux-(image|headers)-' \
+            | grep -vxF "$keep" | while read -r old; do gh release delete-asset stoa-update "$old" -y; done

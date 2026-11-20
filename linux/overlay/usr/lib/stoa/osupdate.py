@@ -11,13 +11,18 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
+import urllib.error
 import urllib.request
 
 DEFAULT_URL = "https://github.com/damieng1121-ctrl/foundationos/releases/download/stoa-update/latest.json"
 CONF = "/etc/stoa/update.conf"
 AUTO_FLAG = "/etc/stoa/auto-update"
 WHATS_NEW = "/usr/share/stoa/whats-new.txt"
+# Updates must be signed by this key once Stoa has it (it arrives inside a signed build). Without it (older
+# installs) the published SHA-256 is the only check.
+PUBKEY = "/usr/share/stoa/update-key.pem"
 CACHE_TTL = 6 * 3600
 
 
@@ -43,13 +48,85 @@ def newer(a, b):
     return subprocess.run(["dpkg", "--compare-versions", a, "gt", b]).returncode == 0
 
 
-def fetch_manifest(timeout=15):
-    req = urllib.request.Request(update_url(), headers={"User-Agent": "Stoa updater"})
+class SignatureError(ValueError):
+    pass
+
+
+def _get(url, timeout):
+    req = urllib.request.Request(url, headers={"User-Agent": "Stoa updater"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        m = json.loads(r.read().decode("utf-8"))
+        return r.read()
+
+
+def verify_signature(data, sig):
+    """True if sig is a valid Ed25519 signature of data by Stoa's update key."""
+    with tempfile.TemporaryDirectory() as td:
+        d, s = os.path.join(td, "data"), os.path.join(td, "sig")
+        open(d, "wb").write(data)
+        open(s, "wb").write(sig)
+        r = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", PUBKEY, "-rawin", "-in", d,
+                            "-sigfile", s], capture_output=True)
+        return r.returncode == 0
+
+
+def fetch_signed(name, timeout=15):
+    """Fetch latest.json / kernel.json from the update address, checking its signature when Stoa has the key."""
+    url = update_url().rsplit("/", 1)[0] + "/" + name
+    data = _get(url, timeout)
+    if os.path.exists(PUBKEY):
+        try:
+            sig = _get(url + ".sig", timeout)
+        except OSError:
+            raise SignatureError(f"{name} isn't signed, so it wasn't trusted")
+        if not verify_signature(data, sig):
+            raise SignatureError(f"{name} has an invalid signature, so it wasn't trusted")
+    return json.loads(data.decode("utf-8"))
+
+
+def fetch_manifest(timeout=15):
+    m = fetch_signed(update_url().rsplit("/", 1)[1], timeout)
     if not all(k in m for k in ("version", "url", "sha256")):
         raise ValueError("incomplete update description")
     return m
+
+
+def fetch_kernel(timeout=15):
+    """The newest Stoa kernel (security fixes): {"release", "packages": [{file, url, sha256}], ...} or None."""
+    try:
+        k = fetch_signed("kernel.json", timeout)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None  # no kernel published yet
+        raise
+    if not k.get("packages") or not all({"file", "url", "sha256", "package", "version"} <= set(p) for p in k["packages"]):
+        raise ValueError("incomplete kernel description")
+    return k
+
+
+LAST_ERROR = ""
+
+
+def secure_boot_on():
+    import glob
+    for f in glob.glob("/sys/firmware/efi/efivars/SecureBoot-*"):
+        try:
+            return open(f, "rb").read()[-1:] == b"\x01"
+        except OSError:
+            return False
+    return False
+
+
+def kernel_needed(k):
+    """Packages from the kernel description that aren't installed at that version. None with Secure Boot on:
+    those PCs start Ubuntu's signed kernel, which gets its security updates from Ubuntu."""
+    if secure_boot_on():
+        return []
+    need = []
+    for p in k["packages"]:
+        r = subprocess.run(["dpkg-query", "-W", "-f", "${Version}", p["package"]], capture_output=True, text=True)
+        if r.returncode or r.stdout.strip() != p["version"]:
+            need.append(p)
+    return need
 
 
 def _cache_path():
@@ -69,17 +146,42 @@ def check(force=False, timeout=15):
                 m = c.get("manifest")
         except (OSError, ValueError):
             pass
+    k = None
     if m is None:
+        global LAST_ERROR
         try:
             m = fetch_manifest(timeout)
+            LAST_ERROR = ""
+        except SignatureError as e:
+            LAST_ERROR = f"An update was found but not installed: {e}. This can mean it was tampered with."
+            return None
         except (OSError, ValueError):
             return None
         try:
+            k = fetch_kernel(timeout)
+        except (OSError, ValueError):
+            k = None
+        try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            json.dump({"t": time.time(), "manifest": m}, open(path, "w"))
+            json.dump({"t": time.time(), "manifest": m, "kernel": k}, open(path, "w"))
         except OSError:
             pass
-    return m if m and newer(m["version"], installed_version()) else None
+    else:
+        try:
+            k = json.load(open(path)).get("kernel")
+        except (OSError, ValueError):
+            k = None
+    desktop = newer(m["version"], installed_version())
+    kernel = bool(k) and bool(kernel_needed(k))
+    if not desktop and not kernel:
+        return None
+    out = dict(m) if desktop else {"version": installed_version(), "notes": []}
+    if kernel:
+        out["kernel"] = k["release"]
+        out["notes"] = [f"Security update for the Stoa kernel ({k['release']}) - restart afterwards"] + \
+            list(out.get("notes") or [])
+    out["desktop"] = desktop
+    return out
 
 
 def forget_cache():
@@ -89,7 +191,7 @@ def forget_cache():
         pass
 
 
-def download_verified(m, dest):
+def download_verified(m, dest):  # m: anything with url and sha256
     """Download the package and check it's exactly the published file (SHA-256). Raises on any mismatch."""
     req = urllib.request.Request(m["url"], headers={"User-Agent": "Stoa updater"})
     h = hashlib.sha256()

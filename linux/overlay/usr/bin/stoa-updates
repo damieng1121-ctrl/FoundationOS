@@ -108,9 +108,15 @@ class Updates(Gtk.Window):
         cur = osupdate.installed_version()
         if m:
             size = f" · {int(m.get('size', 0)) / 1e6:.0f} MB" if m.get("size") else ""
-            self._fill(self.stoa_card, f"New Stoa features are ready - version {m['version']}",
+            title = (f"New Stoa features are ready - version {m['version']}" if m.get("desktop", True)
+                     else "A security update is ready")
+            self._fill(self.stoa_card, title,
                        f"You have {cur}{size}. Takes a minute; sign out and back in afterwards.",
                        "Update Stoa", self.update_stoa, notes_text(m))
+        elif osupdate.LAST_ERROR:
+            self._fill(self.stoa_card, "⚠ An update wasn't trusted", osupdate.LAST_ERROR +
+                       " Your PC is safe - nothing was installed. Try again later; if it keeps happening, tell "
+                       "Stoa's makers.")
         else:
             self._fill(self.stoa_card, "Stoa is up to date", f"Version {cur}")
         if n > 0:

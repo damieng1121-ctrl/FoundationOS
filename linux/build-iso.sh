@@ -126,6 +126,9 @@ stage_customize() {
   chroot "$ROOT" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LANG=C.UTF-8 \
     STOA_VERSION="$VERSION" /tmp/setup-rootfs.sh
   rm -f "$ROOT/tmp/setup-rootfs.sh"
+  if [ -n "${STOA_SIGNING_KEY:-}" ]; then  # this install only accepts updates signed with your key
+    "$HERE/tools/sign-manifest.sh" --public > "$ROOT/usr/share/stoa/update-key.pem"
+  fi
   log "Edition: $EDITION"
   chroot "$ROOT" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 /usr/lib/stoa/fpkg-helper edition "$EDITION" --chroot
   umount_chroot
