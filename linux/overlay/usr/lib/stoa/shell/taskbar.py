@@ -7,6 +7,7 @@ gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, GtkLayerShell  # noqa: E402
 
 import apps  # noqa: E402
+from hovertip import HoverTip  # noqa: E402
 import system  # noqa: E402
 import theme  # noqa: E402
 from flyouts import bg  # noqa: E402
@@ -37,6 +38,8 @@ class Taskbar(Gtk.Window):
         GtkLayerShell.set_exclusive_zone(self, BAR_HEIGHT + MARGIN)
         self.set_size_request(-1, BAR_HEIGHT)
 
+        # Hover labels drawn by Stoa (GTK tooltips flood the compositor with a high-rate mouse).
+        self.tips = HoverTip(bottom_margin=BAR_HEIGHT + MARGIN + 10, left_offset=MARGIN)
         bar = theme.css(Gtk.Box(), "fs-glass", "fs-taskbar")
         self.add(bar)
 
@@ -45,7 +48,7 @@ class Taskbar(Gtk.Window):
         start = theme.css(Gtk.Button(), "fs-tb-btn", "fs-start")
         pb = GdkPixbuf.Pixbuf.new_from_file_at_size("/usr/share/stoa/logo-round-96.png", 34, 34)
         start.add(Gtk.Image.new_from_pixbuf(pb))
-        start.set_tooltip_text("Stoa menu (Super+Space)")
+        self.tips.attach(start, "Stoa menu (Super+Space)")
         start.set_valign(Gtk.Align.CENTER)
         start.connect("clicked", lambda *_: shell.start.toggle())
         left.pack_start(start, False, False, 0)
@@ -58,7 +61,7 @@ class Taskbar(Gtk.Window):
         left.pack_start(search, False, False, 0)
         self.search_pill = search
         ai = theme.css(Gtk.Button(label="✦"), "fs-tb-btn", "fs-ai")
-        ai.set_tooltip_text("Stoa AI (Super+C)")
+        self.tips.attach(ai, "Stoa AI (Super+C)")
         ai.set_valign(Gtk.Align.CENTER)
         ai.set_size_request(38, 38)
         ai.connect("clicked", self._ai_clicked)
@@ -91,7 +94,8 @@ class Taskbar(Gtk.Window):
         for i in (self.i_net, self.i_vol, self.i_bat):
             sbox.pack_start(i, False, False, 0)
         status.add(sbox)
-        status.set_tooltip_text("Quick settings")
+        self.status_tip = "Quick settings"
+        self.tips.attach(status, lambda: self.status_tip)
         status.connect("clicked", lambda *_: shell.quick.toggle())
         status.connect("scroll-event", self._scroll_volume)
         right.pack_start(status, False, False, 0)
@@ -140,14 +144,14 @@ class Taskbar(Gtk.Window):
                 self.i_bat.set_from_icon_name(bat, Gtk.IconSize.BUTTON)
                 self.i_bat.show()
             tip = {"wifi": f"Wi-Fi: {name}", "ethernet": f"Ethernet: {name}"}.get(kind, "Not connected")
-            self.i_net.get_parent().get_parent().set_tooltip_text(tip + " · Quick settings")
+            self.status_tip = tip + " · Quick settings"
         bg(read, show)
         return True
 
     def _updates(self):
         def show(n):
             self.upd.set_visible(n > 0)
-            self.upd.set_tooltip_text(f"{n} update{'s' if n != 1 else ''} ready to install")
+            self.tips.attach(self.upd, f"{n} update{'s' if n != 1 else ''} ready to install")
         bg(system.updates_count, show)
         return True
 
@@ -194,7 +198,7 @@ class Taskbar(Gtk.Window):
                     for _a, key, ws in entries)
         if sig == getattr(self, "_sig", None):
             for (a, key, ws), b in zip(entries, self.app_box.get_children()):
-                b.set_tooltip_text(self._title(a, key, ws))
+                b.stoa_tip = self._title(a, key, ws)
             return
         self._sig = sig
         for c in self.app_box.get_children():
@@ -232,7 +236,7 @@ class Taskbar(Gtk.Window):
         o.add_overlay(dot)
         o.set_overlay_pass_through(dot, True)
         b.add(o)
-        b.set_tooltip_text(self._title(a, key, ws))
+        self.tips.attach(b, self._title(a, key, ws))
         b.connect("clicked", lambda *_: self._click(a, key, ws))
         b.connect("button-press-event", lambda w, e: self._press(e, a, key, ws))
         return b

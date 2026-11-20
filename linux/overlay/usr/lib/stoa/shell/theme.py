@@ -118,6 +118,7 @@ calendar:indeterminate { color: #55607a; }
 menu, .menu { background-color: #161d2e; color: #e9edf7; border-radius: 10px; padding: 6px; }
 menuitem { padding: 6px 12px; border-radius: 6px; }
 menuitem:hover { background-color: #2a3550; }
+.fs-hovertip { padding: 6px 10px; border-radius: 8px; color: #e9edf7; font-size: 12px; }
 """
 
 

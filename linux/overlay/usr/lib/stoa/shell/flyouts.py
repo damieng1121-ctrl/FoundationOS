@@ -68,7 +68,6 @@ class QuickSettings(Popup):
                               ("system-shutdown-symbolic", "Power", lambda b: self.shell.power_menu(b))]:
             b = theme.css(Gtk.Button(), "fs-power-btn")
             b.add(icon(name, 18))
-            b.set_tooltip_text(tip)
             b.connect("clicked", cb)
             foot.pack_end(b, False, False, 0)
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -92,7 +91,6 @@ class QuickSettings(Popup):
         box.button = b
         if more:
             m = theme.css(Gtk.Button(label="›"), "fs-qs-tile")
-            m.set_tooltip_text("Choose a network")
             m.connect("clicked", lambda *_: more())
             box.pack_start(m, False, False, 0)
             box.more = m
@@ -182,7 +180,6 @@ class QuickSettings(Popup):
         head.pack_start(theme.css(Gtk.Label(label="Wi-Fi", xalign=0), "fs-h2"), True, True, 0)
         rescan = theme.css(Gtk.Button(), "fs-power-btn")
         rescan.add(icon("view-refresh-symbolic", 16))
-        rescan.set_tooltip_text("Look for networks again")
         rescan.connect("clicked", lambda *_: self._scan(force=True))
         head.pack_start(rescan, False, False, 0)
         self.wifi_switch = Gtk.Switch(valign=Gtk.Align.CENTER)

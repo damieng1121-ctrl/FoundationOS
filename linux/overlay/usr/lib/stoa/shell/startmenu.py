@@ -92,7 +92,6 @@ class StartMenu(Popup):
                                   justify=Gtk.Justification.CENTER), "fs-tile-label")
         v.pack_start(lbl, False, False, 0)
         b.add(v)
-        b.set_tooltip_text(a.get_description() or a.get_name())
         b.connect("clicked", lambda *_: self._launch(a))
         b.connect("button-press-event", lambda w, e: self._context(e, a))
         return b
@@ -174,7 +173,6 @@ class StartMenu(Popup):
         user.pack_start(Gtk.Label(label=name, xalign=0), False, False, 0)
         ub = theme.css(Gtk.Button(), "fs-row")
         ub.add(user)
-        ub.set_tooltip_text("Account settings")
         ub.connect("clicked", lambda *_: self._run("stoa-settings accounts"))
         foot.pack_start(ub, False, False, 0)
         if system.is_live():
@@ -185,7 +183,6 @@ class StartMenu(Popup):
         img = Gtk.Image.new_from_icon_name("system-shutdown-symbolic", Gtk.IconSize.BUTTON)
         img.set_pixel_size(18)
         pb.add(img)
-        pb.set_tooltip_text("Power")
         pb.connect("clicked", lambda b: self.shell.power_menu(b))
         foot.pack_end(pb, False, False, 0)
         return foot
