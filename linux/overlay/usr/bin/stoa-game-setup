@@ -68,14 +68,55 @@ def fail(msg):
     sys.exit(1)
 
 
-def download(url, dest):
+def github_digest(url):
+    """The SHA-256 GitHub publishes for a release download (github.com/OWNER/REPO/releases/download/TAG/NAME or
+    .../releases/latest/download/NAME), or None if it isn't a GitHub release file or GitHub has no checksum."""
+    m = re.match(r"https://github\.com/([^/]+/[^/]+)/releases/(?:download/([^/]+)|latest/download)/([^/?#]+)$", url)
+    if not m:
+        return None
+    repo, tag, name = m.groups()
+    api = f"https://api.github.com/repos/{repo}/releases/" + (f"tags/{tag}" if tag else "latest")
+    try:
+        req = urllib.request.Request(api, headers={"User-Agent": "stoa-game-setup",
+                                                   "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            rel = json.loads(r.read())
+    except (OSError, ValueError):
+        return None
+    for a in rel.get("assets", []):
+        if a.get("name") == urllib.request.unquote(name) and str(a.get("digest", "")).startswith("sha256:"):
+            return a["digest"].split(":", 1)[1].lower()
+    return None
+
+
+def download(url, dest, sha256=None):
+    """Download, then check it: against the publisher's SHA-256 when there is one (given, or from GitHub), and
+    always with Stoa Protect's virus scan. Anything that doesn't match or looks malicious is deleted."""
+    import hashlib
     say(f"Downloading {url.rsplit('/', 1)[-1]}...")
+    sha256 = (sha256 or "").removeprefix("sha256:").lower() or github_digest(url)
     req = urllib.request.Request(url, headers={"User-Agent": "stoa-game-setup"})
+    h = hashlib.sha256()
     try:
         with urllib.request.urlopen(req, timeout=120) as r, open(dest, "wb") as f:
-            shutil.copyfileobj(r, f)
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                h.update(chunk)
+                f.write(chunk)
     except OSError as e:
         fail(f"Couldn't download {url}\n{e}\nCheck the internet connection and try again.")
+    if sha256:
+        if h.hexdigest() != sha256:
+            os.remove(dest)
+            fail(f"{os.path.basename(dest)} didn't match the checksum its publisher gave, so Stoa deleted it (it "
+                 "may have been damaged or tampered with). Try again later.")
+        say("Checksum verified.")
+    if shutil.which("stoa-protect"):
+        r = subprocess.run(["stoa-protect", "check", dest], capture_output=True, text=True)
+        if r.returncode == 1:
+            fail(f"Stoa Protect found a virus in {os.path.basename(dest)} and quarantined it.")
 
 
 def desktop(file_id, name, exec_, icon, comment="", categories="Game;", workdir=None):
@@ -922,17 +963,17 @@ def setup_creality_print():
         for a in rel.get("assets", []):
             n = a["name"].lower()
             if n.endswith(".flatpak") and ("x86_64" in n or "amd64" in n or "aarch64" not in n) and not flatpak:
-                flatpak = (rel["tag_name"], a["browser_download_url"], a["name"])
+                flatpak = (rel["tag_name"], a["browser_download_url"], a["name"], a.get("digest"))
             if n.endswith(".appimage") and "aarch64" not in n and "arm" not in n and not appimage:
-                appimage = (rel["tag_name"], a["browser_download_url"], a["name"])
+                appimage = (rel["tag_name"], a["browser_download_url"], a["name"], a.get("digest"))
         if flatpak or appimage:
             break
     serial_access()
     if flatpak:
-        tag, url, name = flatpak
+        tag, url, name, digest = flatpak
         with tempfile.TemporaryDirectory() as td:
             dest = os.path.join(td, name)
-            download(url, dest)
+            download(url, dest, digest)
             # Its runtime comes from Flathub.
             subprocess.run(["flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
                             "https://dl.flathub.org/repo/flathub.flatpakrepo"], capture_output=True)
@@ -943,10 +984,10 @@ def setup_creality_print():
             return
         say("The Flatpak didn't install; trying the AppImage instead.")
     if appimage:
-        tag, url, name = appimage
+        tag, url, name, digest = appimage
         os.makedirs(CREALITY_DIR, exist_ok=True)
         dest = os.path.join(CREALITY_DIR, "CrealityPrint.AppImage")
-        download(url, dest + ".download")
+        download(url, dest + ".download", digest)
         os.chmod(dest + ".download", 0o755)
         os.replace(dest + ".download", dest)
         # APPIMAGE_EXTRACT_AND_RUN: runs without FUSE, which newer AppImages otherwise need.
@@ -996,6 +1037,12 @@ def setup_fusion_360():
         subprocess.run(["fpkg", "install", "-y", "onshape"])
         info("Onshape is in the Stoa menu. Sign in (or create a free account) and you can import your Fusion "
              "designs: in Fusion, File > Export > STEP, then in Onshape, Import.", "Onshape")
+        return
+    if GUI and subprocess.run(["zenity", "--question", "--no-wrap", "--title=Fusion 360",
+                               "--text=The community installer is a script from codeberg.org/cryinkfly. Its author "
+                               "doesn't publish a checksum, so Stoa can only virus-scan it, not confirm it's the "
+                               "original. It will ask for your password to add Wine packages.\n\nContinue?"]
+                              ).returncode != 0:
         return
     say("Downloading the community Fusion 360 installer (cryinkfly, Codeberg)...")
     script = os.path.join(HOME, ".local/lib/stoa/fusion-installer.sh")
