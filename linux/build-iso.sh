@@ -153,6 +153,11 @@ stage_iso() {
   sed -i "s/@VERSION@/$VERSION/g" "$ISO/boot/grub/grub.cfg"
   mkdir -p "$ISO/boot/grub/themes"
   cp -a "$HERE/iso/theme" "$ISO/boot/grub/themes/stoa" 2>/dev/null || true
+  # Stoa Check on the USB stick: run it from Windows to see what works before switching.
+  if [ -d "$HERE/../windows" ]; then
+    mkdir -p "$ISO/Stoa Check (run on Windows)"
+    cp "$HERE/../windows/StoaCheck.ps1" "$HERE/../windows/Stoa Check.cmd" "$ISO/Stoa Check (run on Windows)/"
+  fi
 
   log "Creating hybrid BIOS/UEFI ISO"
   grub-mkrescue -o "$OUT/$ISO_NAME" "$ISO" -- -volid STOA_OS

@@ -299,6 +299,22 @@ def wallpaper_of(user):
     return None
 
 
+def windows_plan(user):
+    """Stoa-plan.json left on the Windows Desktop by Stoa Check: the apps to install. -> [(id, name)]"""
+    for desk in [ci(user, "Desktop")] + [ci(od, "Desktop") for od in onedrive_dirs(user)]:
+        p = desk and ci(desk, "Stoa-plan.json")
+        if not p:
+            continue
+        try:
+            plan = json.load(open(p, encoding="utf-8-sig"))
+            import yaml
+            apps = {a["id"]: a["name"] for a in yaml.safe_load(open("/usr/share/stoa/catalog.yaml"))["apps"]}
+        except (OSError, ValueError, ImportError, KeyError):
+            return []
+        return [(i, apps[i]) for i in plan.get("apps", []) if i in apps]
+    return []
+
+
 def has_steam(root):
     return any(ci(root, *p) for p in (("Program Files (x86)", "Steam", "steamapps"), ("SteamLibrary", "steamapps"),
                                       ("Steam", "steamapps"), ("Games", "SteamLibrary", "steamapps")))
@@ -466,6 +482,11 @@ def gui():
                       ("wallpaper", "Wallpaper", "Your Windows desktop picture"),
                       ("steam", "Steam games", "Add games installed on this drive to Steam, without downloading "
                        "them again")]
+            self.plan = windows_plan(self.user)
+            if self.plan:
+                items.insert(0, ("apps", f"Your apps ({len(self.plan)})",
+                                 "From Stoa Check: " + ", ".join(n for _i, n in self.plan[:8]) +
+                                 (" and more" if len(self.plan) > 8 else "")))
             for key, label, sub in items:
                 if key == "steam" and not (self.win.get("uuid") and has_steam(self.win["root"])):
                     continue
@@ -593,9 +614,9 @@ def gui():
             if stats["failed"]:
                 notes.append(f"{len(stats['failed'])} files couldn't be copied. They're usually OneDrive files that "
                              "were only stored online - sign in to OneDrive on the web to get them.")
-            GLib.idle_add(self._copied, stats, notes, "steam" in chosen)
+            GLib.idle_add(self._copied, stats, notes, "steam" in chosen, "apps" in chosen)
 
-        def _copied(self, stats, notes, steam):
+        def _copied(self, stats, notes, steam, apps=False):
             self.pbar.set_fraction(1)
             self.pbar.set_text("Done")
             self.current.set_text("")
@@ -609,6 +630,8 @@ def gui():
             self.next.set_label("Close")
             self.next.set_sensitive(True)
             self.done = True
+            if apps and self.plan:
+                ui.CommandRunner(self, "Installing your apps", ["fpkg", "install", "-y", *[i for i, _n in self.plan]])
             if steam:
                 # The drive was opened read-only for copying; the Steam tool opens it properly (every start-up).
                 uuid = self.win.get("uuid")
