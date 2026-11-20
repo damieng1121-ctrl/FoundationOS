@@ -115,7 +115,7 @@ printf '[Unit]\nConditionKernelCommandLine=!boot=casper\n' > /etc/systemd/system
 systemctl enable clamav-freshclam.service
 
 # --- Desktop integration
-chmod 0755 /usr/bin/fpkg /usr/bin/stoa-* /usr/lib/stoa/fpkg-helper /usr/lib/stoa/security-helper /usr/lib/stoa/users-helper \
+chmod 0755 /usr/bin/fpkg /usr/bin/stoa-* /usr/lib/stoa/fpkg-helper /usr/lib/stoa/security-helper /usr/lib/stoa/users-helper /usr/lib/stoa/dualboot-check \
   /usr/lib/stoa/install-bootloader-pkg /usr/lib/stoa/select-session /usr/lib/stoa/app-names /usr/lib/stoa/stoa-toplevels
 gtk-update-icon-cache -f /usr/share/icons/hicolor || true
 /usr/lib/stoa/app-names

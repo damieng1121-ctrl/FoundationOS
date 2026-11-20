@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Before installing: spot Windows drives that can't be shrunk safely (BitLocker, Fast Startup / hibernation)
+and explain how to fix them in Windows, so "Install alongside Windows" works first time.
+Exit 0 to carry on to the installer, 1 to stop."""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+
+def zenity(*args):
+    return subprocess.run(["zenity", *args], capture_output=True).returncode == 0
+
+
+def main():
+    try:
+        devs = json.loads(subprocess.run(["lsblk", "-J", "-o", "PATH,FSTYPE,LABEL,SIZE"], capture_output=True,
+                                         text=True).stdout or "{}")["blockdevices"]
+    except (ValueError, KeyError):
+        return 0
+    flat, stack = [], list(devs)
+    while stack:
+        d = stack.pop(0)
+        stack[0:0] = d.get("children") or []
+        flat.append(d)
+    bitlocker = [d for d in flat if (d.get("fstype") or "").lower() == "bitlocker"]
+    hibernated = []
+    root = [] if os.geteuid() == 0 else ["sudo", "-n"]  # the live session's user may use sudo without a password
+    for d in flat:
+        if d.get("fstype") != "ntfs":
+            continue
+        with tempfile.TemporaryDirectory() as mp:
+            r = subprocess.run(root + ["mount", "-o", "ro", "-t", "ntfs3", d["path"], mp], capture_output=True, text=True)
+            if r.returncode == 0:
+                subprocess.run(root + ["umount", mp], capture_output=True)
+                continue
+            log = subprocess.run(root + ["dmesg"], capture_output=True, text=True).stdout[-4000:].lower()
+            if any(w in (r.stderr.lower() + log) for w in ("hibernat", "dirty", "chkdsk", "force")):
+                hibernated.append(d)  # Windows left it hibernated (Fast Startup) or not shut down cleanly
+    msgs = []
+    if bitlocker:
+        msgs.append("• Windows' drive is locked with BitLocker (Device Encryption), so it can't be made smaller "
+                    "to make room for Stoa.\n   In Windows: Settings > Privacy & security > Device encryption "
+                    "(or Control Panel > BitLocker) > Turn off, and wait for it to finish.\n   Write down your "
+                    "BitLocker recovery key first (aka.ms/myrecoverykey).")
+    if hibernated:
+        msgs.append("• Windows didn't fully shut down (Fast Startup), so its drive can't be changed safely.\n   "
+                    "In Windows: Control Panel > Power Options > Choose what the power buttons do > Change "
+                    "settings that are currently unavailable > untick 'Turn on fast startup', then Shut down.")
+    if not msgs:
+        return 0
+    text = ("To install Stoa alongside Windows, two things in Windows need changing first:\n\n" if len(msgs) > 1
+            else "To install Stoa alongside Windows, one thing in Windows needs changing first:\n\n")
+    text += "\n\n".join(msgs) + ("\n\nYou can still install Stoa now if you're replacing Windows completely or "
+                                 "installing on a different drive.")
+    return 0 if zenity("--question", "--no-wrap", "--title=Before you install", "--icon-name=dialog-warning",
+                       f"--text={text}", "--ok-label=Continue anyway", "--cancel-label=Not now") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

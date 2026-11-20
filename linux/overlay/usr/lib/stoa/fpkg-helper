@@ -209,6 +209,13 @@ def main():
         install_drivers()
     elif op == "razer":
         install_razer()
+    elif op == "reboot-windows":
+        cfg = open("/boot/grub/grub.cfg", errors="replace").read()
+        m = re.search(r"^menuentry '([^']*Windows[^']*)'", cfg, re.M)
+        if not m:
+            sys.exit("Windows isn't in the start-up menu. Run: sudo update-grub")
+        sh(["grub-reboot", m.group(1)])
+        sh(["systemctl", "reboot"])
     elif op == "mount-drive" and args:
         mount_drive(args[0])
     elif op == "refresh":

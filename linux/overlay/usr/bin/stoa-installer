@@ -4,5 +4,7 @@ if ! grep -qw boot=casper /proc/cmdline; then
   zenity --info --title "Stoa" --text "Stoa is already installed on this computer." 2>/dev/null
   exit 0
 fi
+# Before the installer: check Windows can safely be kept alongside Stoa.
+/usr/lib/stoa/dualboot-check || exit 0
 export QT_QPA_PLATFORM="wayland;xcb"
 exec sudo -E calamares "$@"

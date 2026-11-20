@@ -184,8 +184,20 @@ def power(action):
         "signout": ["labwc", "--exit"],
         "restart": ["systemctl", "reboot"],
         "shutdown": ["systemctl", "poweroff"],
+        # Next start-up only: Windows, then back to Stoa as usual.
+        "windows": ["pkexec", "/usr/lib/stoa/fpkg-helper", "reboot-windows"],
     }
     subprocess.Popen(cmds[action], start_new_session=True)
+
+
+def windows_entry():
+    """The start-up menu's Windows entry, if Windows is installed alongside Stoa."""
+    try:
+        cfg = open("/boot/grub/grub.cfg", errors="replace").read()
+    except OSError:
+        return None
+    m = re.search(r"^menuentry '([^']*Windows[^']*)'", cfg, re.M)
+    return m.group(1) if m else None
 
 
 def is_live():
