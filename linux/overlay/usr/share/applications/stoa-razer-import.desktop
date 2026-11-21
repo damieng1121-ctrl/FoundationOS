@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Razer profiles
+Comment=Import your Razer Synapse lighting profiles and apply them to your Razer keyboard
+Exec=stoa-razer-import %f
+Icon=input-keyboard
+Categories=Settings;HardwareSettings;
+Keywords=razer;synapse;chroma;profile;lighting;rgb;import;keyboard;blackwidow;

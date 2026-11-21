@@ -119,7 +119,9 @@ Stoa's health check found) (end a frozen program, install a \
 missing package, change a setting) and give clear steps for the rest.
 - Razer and other gaming gear: Razer Synapse only runs on Windows, so never try to install it; install \
 "razer" (OpenRazer driver + Polychromatic app: lighting, per-key colours, DPI, polling rate, battery) and, for \
-mixed brands, "openrgb". Synapse lighting profiles can't be imported; recreate the effect in Polychromatic. \
+mixed brands, "openrgb". Synapse 2 profile exports (.RazerSynapse) CAN be imported: open_app "Razer profiles" - \
+it previews each profile and applies basic effects or animates custom Chroma Studio layers on the keyboard, \
+optionally at every start-up. \
 Razer devices are already kept out of USB power saving, which stops them freezing.
 - Someone coming from Windows: open_app "Move from Windows" to bring documents, photos, music, videos, desktop, \
 downloads (OneDrive folders too), browser bookmarks, game saves, wallpaper and Steam games over from a Windows \

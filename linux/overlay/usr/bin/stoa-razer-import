@@ -1,0 +1,492 @@
+#!/usr/bin/env python3
+"""Import Razer Synapse profiles into Stoa and play them on your Razer keyboard through OpenRazer.
+
+  stoa-razer-import [FILE]          open the importer (a Synapse 2 export: *.RazerSynapse)
+  stoa-razer-import list FILE       print the profiles in an export
+  stoa-razer-import apply NAME      apply an imported profile once (basic effects) or run it (custom layers)
+  stoa-razer-import run             run the profile chosen for start-up (started at sign-in)
+
+Basic effects (Wave, Spectrum, Static, Breathing, Reactive, Ripple, brightness) go straight to the keyboard.
+Chroma Studio custom layers (per-key groups with gradient waves, static colours, breathing, spectrum) are
+animated by Stoa key by key. Keypress-triggered layer effects (reactive/ripple inside Chroma Studio) need
+keyboard access Stoa doesn't take, so those layers are shown as their resting colour.
+"""
+import colorsys
+import json
+import math
+import os
+import re
+import sys
+import time
+import xml.etree.ElementTree as ET
+import zipfile
+
+CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "stoa", "razer")
+ACTIVE = os.path.join(CONFIG, "active")
+ROWS, COLS = 6, 22  # Razer Chroma keyboard grid (BlackWidow Chroma and most full-size keyboards)
+
+
+# ------------------------------------------------------------------ reading Synapse exports
+
+def _rgb(el):
+    if el is None:
+        return (0, 0, 0)
+    return tuple(max(0, min(255, int(el.findtext(c) or 0))) for c in ("Red", "Green", "Blue"))
+
+
+def _num(el, tag, default=0.0):
+    try:
+        return float((el.findtext(tag) or "").strip() or default)
+    except ValueError:
+        return default
+
+
+def parse_effect(efx):
+    """One Chroma Studio group effect -> plain dict."""
+    kind = efx.tag.replace("Efx", "").upper()
+    d = {"type": kind}
+    if kind in ("WAVE", "RIPPLE", "SPECTRUM"):
+        stops = []
+        for s in efx.findall("./Pattern/Stops/Stop"):
+            stops.append((float(s.get("marker") or 0), _rgb(s.find("Color"))))
+        d.update(stops=sorted(stops) or [(0, (0, 255, 0))], speed=_num(efx, "Speed", 5),
+                 width=_num(efx, "Width", 100), angle=_num(efx, "Angle", 0),
+                 trigger=(efx.findtext("Trigger") or "AUTO").strip())
+    elif kind == "STATIC":
+        d["color"] = _rgb(efx.find("Color"))
+    elif kind == "BREATHING":
+        d["colors"] = [_rgb(c) for c in efx.findall("Color")] or [(255, 255, 255)]
+        d["duration"] = _num(efx, "Duration", 4000)
+        d["trigger"] = (efx.findtext("Trigger") or "AUTO").strip()
+    elif kind == "REACTIVE":
+        d["color"] = _rgb(efx.find("Color"))
+        d["trigger"] = "KEYPRESS"
+    return d
+
+
+def parse_export(path):
+    """A Synapse 2 export (*.RazerSynapse, a zip of XML) -> [profile dict]."""
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        files = {n: z.read(n) for n in names if n.endswith(".xml") and z.getinfo(n).file_size < 5_000_000}
+    profiles = []
+    for name, data in files.items():
+        m = re.match(r"Profiles/([0-9A-Fa-f-]{36})\.xml$", name)
+        if not m:
+            continue
+        uid = m.group(1)
+        root = ET.fromstring(data)
+        dev = root.find("Device")
+        led = root.find("./LEDList/LED")
+        basic = {"effect": (led.findtext("Effect") if led is not None else "STATIC") or "STATIC",
+                 "brightness": int(_num(led, "LEDBrightness", 100)) if led is not None else 100,
+                 "enabled": (led.findtext("EnableLED") if led is not None else "1") != "0", "colors": []}
+        for eff in root.findall("./LEDEffectList/LEDID/LEDEffect"):
+            if (eff.findtext("Effect") or "") == basic["effect"]:
+                basic["colors"] = [_rgb(c) for c in eff.findall("./Colors/Color")]
+                break
+        # Chroma Studio layers, bottom to top, from the Tiers file
+        layer_files = {n.rsplit("/", 1)[-1][:-4]: ET.fromstring(d) for n, d in files.items()
+                       if n.startswith(f"Profiles/{uid}/RGBLayers/")}
+        order = []
+        for root_l in layer_files.values():
+            if root_l.tag == "Tiers":
+                order = [t.findtext("UUID") for t in sorted(root_l.findall("Tier"), key=lambda t: int(t.get("level") or 0))]
+        layers = []
+        for lid in order:
+            lay = layer_files.get(lid)
+            if lay is None or lay.tag != "RGBLayer" or lay.get("enabled") == "0":
+                continue
+            keys = {}
+            for k in lay.findall("./LayerKeys/LayerKey"):
+                keys[f"{k.get('row')},{k.get('column')}"] = k.get("id")
+            groups = {}
+            for g in lay.findall("./Groups/Group"):
+                efx = next(iter(g), None)
+                if efx is not None:
+                    groups[g.get("id")] = parse_effect(efx)
+            layers.append({"effect": lay.get("effect"), "keys": keys, "groups": groups})
+        profiles.append({
+            "uuid": uid, "name": (root.findtext("ProfileName") or "Profile").strip(),
+            "device": (dev.findtext("DeviceName") if dev is not None else "") or "Razer keyboard",
+            "type": (dev.findtext("DeviceType") if dev is not None else "") or "Keyboard",
+            "mode": (root.findtext("./LEDList/LEDRGBMode") or "BASIC").strip(),
+            "basic": basic, "layers": layers})
+    if not profiles:
+        raise ValueError("no Synapse profiles found in this file")
+    return sorted(profiles, key=lambda p: p["name"])
+
+
+def is_custom(p):
+    return p["mode"] == "ADVANCED" and bool(p["layers"])
+
+
+def describe(p):
+    if is_custom(p):
+        kinds = sorted({g["type"].title() for lay in p["layers"] for g in lay["groups"].values()})
+        return f"Custom Chroma Studio lighting: {len(p['layers'])} layer(s) - {', '.join(kinds)}"
+    b = p["basic"]
+    col = f" in {'rgb(%d,%d,%d)' % b['colors'][0]}" if b["colors"] and b["effect"] in ("STATIC", "BREATHING", "REACTIVE", "RIPPLE") else ""
+    return f"{b['effect'].title()}{col}, brightness {b['brightness']}%"
+
+
+# ------------------------------------------------------------------ rendering custom layers
+
+def _gradient(stops, pos):
+    """Colour at pos (0..1) along a looping gradient of (marker 0..100, rgb) stops."""
+    if len(stops) == 1:
+        return stops[0][1]
+    pts = [(m / 100.0, c) for m, c in stops]
+    pts.append((1.0, pts[0][1]))  # loop back to the first colour
+    pos %= 1.0
+    for (a, ca), (b, cb) in zip(pts, pts[1:]):
+        if a <= pos <= b:
+            f = 0 if b == a else (pos - a) / (b - a)
+            return tuple(int(ca[i] + (cb[i] - ca[i]) * f) for i in range(3))
+    return pts[-1][1]
+
+
+def colour_at(g, row, col, t):
+    k = g["type"]
+    if k == "STATIC":
+        return g["color"]
+    if k == "BREATHING":
+        period = max(1.5, min(10.0, g["duration"] / 1000.0 / 2 if g["duration"] > 10000 else g["duration"] / 1000.0))
+        cols = g["colors"]
+        cycle = int(t / period)
+        c = cols[cycle % len(cols)]
+        level = (1 - math.cos(2 * math.pi * (t % period) / period)) / 2
+        return tuple(int(v * level) for v in c)
+    if k == "WAVE" or (k == "SPECTRUM"):
+        if k == "SPECTRUM":
+            r, gg, b = colorsys.hsv_to_rgb((t / 8.0) % 1.0, 1, 1)
+            return (int(r * 255), int(gg * 255), int(b * 255))
+        ang = math.radians(g["angle"])
+        dist = col * math.cos(ang) + row * 2 * math.sin(ang)   # keys are roughly twice as tall as a column step
+        width = max(4.0, COLS * g["width"] / 100.0)
+        speed = max(0.05, g["speed"] / 10.0)                    # Synapse 1..10ish -> cycles per second
+        return _gradient(g["stops"], dist / width - t * speed)
+    if k in ("RIPPLE", "REACTIVE"):
+        return (0, 0, 0)  # keypress effects: resting state is dark
+    return (0, 0, 0)
+
+
+def frame(p, t):
+    """{(row, col): rgb} for a custom profile at time t (seconds). Upper layers cover lower ones."""
+    out = {}
+    for lay in p["layers"]:
+        for rc, gid in lay["keys"].items():
+            g = lay["groups"].get(gid)
+            if not g:
+                continue
+            r, c = (int(x) for x in rc.split(","))
+            if r < ROWS and c < COLS:
+                colour = colour_at(g, r, c, t)
+                if colour != (0, 0, 0) or g["type"] in ("STATIC", "BREATHING"):
+                    out[(r, c)] = colour
+    return out
+
+
+def static_preview(p):
+    """Colours for a preview picture: custom frame at t=0, or the basic effect's look."""
+    if is_custom(p):
+        return frame(p, 0.6)
+    b = p["basic"]
+    out = {}
+    for r in range(ROWS):
+        for c in range(COLS):
+            if b["effect"] in ("WAVE", "SPECTRUM"):
+                h = (c / COLS) if b["effect"] == "WAVE" else 0.6
+                rr, gg, bb = colorsys.hsv_to_rgb(h, 1, 1)
+                out[(r, c)] = (int(rr * 255), int(gg * 255), int(bb * 255))
+            elif b["colors"]:
+                out[(r, c)] = b["colors"][0]
+            else:
+                out[(r, c)] = (0, 200, 0)
+    return out
+
+
+# ------------------------------------------------------------------ the keyboard (OpenRazer)
+
+def keyboard():
+    try:
+        from openrazer.client import DeviceManager
+    except ImportError:
+        raise RuntimeError("Razer support isn't installed. Install 'Razer devices' from the Stoa Store, then restart.")
+    try:
+        dm = DeviceManager()
+    except Exception:
+        raise RuntimeError("The Razer service isn't running. Restart the PC (or run: systemctl --user start "
+                           "openrazer-daemon) and try again.")
+    dm.sync_effects = False
+    kbs = [d for d in dm.devices if getattr(d, "type", "") == "keyboard"]
+    if not kbs:
+        raise RuntimeError("No Razer keyboard found. Check it's plugged in, then restart the PC once so the "
+                           "Razer driver loads.")
+    return kbs[0]
+
+
+def apply_basic(dev, p):
+    from openrazer.client import constants as c
+    b = p["basic"]
+    cols = b["colors"] or [(0, 255, 0)]
+    r, g, bl = cols[0]
+    try:
+        dev.brightness = max(0, min(100, b["brightness"]))
+    except Exception:  # noqa: BLE001 - not every model has brightness
+        pass
+    e = b["effect"]
+    fx = dev.fx
+    if not b["enabled"]:
+        fx.none()
+    elif e == "WAVE":
+        fx.wave(c.WAVE_RIGHT)
+    elif e == "SPECTRUM":
+        fx.spectrum()
+    elif e == "BREATHING":
+        if len(cols) >= 2:
+            fx.breath_dual(r, g, bl, *cols[1])
+        elif cols:
+            fx.breath_single(r, g, bl)
+        else:
+            fx.breath_random()
+    elif e == "REACTIVE":
+        fx.reactive(r, g, bl, c.REACTIVE_1000MS)
+    elif e == "RIPPLE" and fx.has("ripple"):
+        fx.ripple(r, g, bl, 0.05)
+    elif e == "STARLIGHT" and fx.has("starlight_single"):
+        fx.starlight_single(r, g, bl, 1)
+    else:
+        fx.static(r, g, bl)
+
+
+def run_custom(dev, p, seconds=None):
+    """Animate a Chroma Studio profile key by key (about 20 frames a second)."""
+    adv = dev.fx.advanced
+    rows, cols = min(ROWS, adv.rows), min(COLS, adv.cols)
+    start = time.monotonic()
+    while seconds is None or time.monotonic() - start < seconds:
+        t = time.monotonic() - start
+        f = frame(p, t)
+        for r in range(rows):
+            for c in range(cols):
+                adv.matrix[r, c] = f.get((r, c), (0, 0, 0))
+        adv.draw()
+        time.sleep(0.05)
+
+
+def saved(name=None):
+    os.makedirs(CONFIG, exist_ok=True)
+    out = {}
+    for fn in os.listdir(CONFIG):
+        if fn.endswith(".json"):
+            try:
+                p = json.load(open(os.path.join(CONFIG, fn)))
+                out[p["name"]] = p
+            except (OSError, ValueError, KeyError):
+                pass
+    return out if name is None else out.get(name)
+
+
+def save(p):
+    os.makedirs(CONFIG, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9 _-]+", "", p["name"]).strip() or p["uuid"]
+    json.dump(p, open(os.path.join(CONFIG, f"{safe}.json"), "w"), indent=1)
+
+
+def set_startup(name):
+    os.makedirs(CONFIG, exist_ok=True)
+    open(ACTIVE, "w").write(name)
+    auto = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "autostart")
+    os.makedirs(auto, exist_ok=True)
+    with open(os.path.join(auto, "stoa-razer-profile.desktop"), "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=Razer lighting profile\n"
+                "Comment=Your imported Synapse lighting on the Razer keyboard\nExec=stoa-razer-import run\n"
+                "Icon=input-keyboard\nX-GNOME-Autostart-Delay=5\n")
+
+
+def apply(p, follow=True):
+    """Put a profile on the keyboard. Custom (animated) profiles keep running when follow is true."""
+    dev = keyboard()
+    if is_custom(p):
+        if follow:
+            run_custom(dev, p)
+        else:
+            run_custom(dev, p, seconds=0.2)
+    else:
+        apply_basic(dev, p)
+
+
+# ================================================================== window
+
+def gui(path=None):
+    sys.path.insert(0, "/usr/lib/stoa")
+    import subprocess
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+    import stoa_ui as ui
+
+    ui.apply_css()
+    win = Gtk.Window(title="Razer profiles")
+    win.set_default_size(*ui.fit_size(820, 640))
+    win.set_icon_name("input-keyboard")
+    ui.css(win, "f-dark")
+    win.connect("destroy", Gtk.main_quit)
+    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    outer.set_border_width(18)
+    win.add(outer)
+    head = Gtk.Box(spacing=8)
+    hv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    hv.pack_start(ui.css(Gtk.Label(label="Razer profiles", xalign=0), "f-title"), False, False, 0)
+    hv.pack_start(ui.css(Gtk.Label(label="Bring your Razer Synapse lighting profiles over from Windows. Open a "
+                                   "Synapse export (.RazerSynapse) and apply a profile to your keyboard.",
+                                   xalign=0, wrap=True), "f-muted"), False, False, 0)
+    head.pack_start(hv, True, True, 0)
+    openb = ui.css(Gtk.Button(label="Open Synapse export…", valign=Gtk.Align.CENTER), "f-primary")
+    head.pack_end(openb, False, False, 0)
+    outer.pack_start(head, False, False, 0)
+    status = ui.css(Gtk.Label(xalign=0, wrap=True), "f-muted")
+    outer.pack_start(status, False, False, 0)
+    sw = Gtk.ScrolledWindow(vexpand=True)
+    sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    listbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+    sw.add(listbox)
+    outer.pack_start(sw, True, True, 0)
+    runner = {"proc": None}
+
+    def preview(p):
+        da = Gtk.DrawingArea()
+        da.set_size_request(COLS * 14 + 8, ROWS * 14 + 8)
+        state = {"t": 0.0}
+
+        def draw(_w, cr):
+            cr.set_source_rgb(0.05, 0.07, 0.12)
+            cr.paint()
+            f = frame(p, state["t"]) if is_custom(p) else static_preview(p)
+            for r in range(ROWS):
+                for c in range(COLS):
+                    rgb = f.get((r, c))
+                    if rgb is None:
+                        cr.set_source_rgb(0.12, 0.14, 0.2)
+                    else:
+                        cr.set_source_rgb(*(v / 255 for v in rgb))
+                    cr.rectangle(4 + c * 14, 4 + r * 14, 12, 12)
+                    cr.fill()
+        da.connect("draw", draw)
+        if is_custom(p):
+            def tick():
+                state["t"] += 0.1
+                da.queue_draw()
+                return da.get_mapped() or True
+            GLib.timeout_add(100, tick)
+        return da
+
+    def use(p, startup):
+        save(p)
+        if runner["proc"]:
+            runner["proc"].terminate()
+            runner["proc"] = None
+        subprocess.run(["pkill", "-f", "stoa-razer-import run"], capture_output=True)
+        if startup:
+            set_startup(p["name"])
+        try:
+            if is_custom(p):
+                runner["proc"] = subprocess.Popen(["stoa-razer-import", "apply", p["name"]], start_new_session=True)
+                status.set_text(f"'{p['name']}' is playing on your keyboard." +
+                                ("" if startup else " Tick 'At start-up' to keep it after restarting."))
+            else:
+                apply(p)
+                status.set_text(f"'{p['name']}' is on your keyboard.")
+        except RuntimeError as e:
+            status.set_text(str(e))
+
+    def show(profiles):
+        for ch in listbox.get_children():
+            ch.destroy()
+        for p in profiles:
+            card = ui.css(Gtk.Box(spacing=14), "f-card")
+            card.pack_start(preview(p), False, False, 0)
+            v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            v.pack_start(ui.css(Gtk.Label(label=p["name"], xalign=0), "f-h2"), False, False, 0)
+            v.pack_start(ui.css(Gtk.Label(label=f"{p['device']} · {describe(p)}", xalign=0, wrap=True,
+                                          max_width_chars=40), "f-muted"), False, False, 0)
+            row = Gtk.Box(spacing=8)
+            boot = Gtk.CheckButton(label="At start-up")
+            boot.set_active(True)
+            b = ui.css(Gtk.Button(label="Apply"), "f-primary")
+            b.connect("clicked", lambda _b, p=p, boot=boot: use(p, boot.get_active()))
+            row.pack_start(b, False, False, 0)
+            row.pack_start(boot, False, False, 0)
+            v.pack_start(row, False, False, 4)
+            card.pack_start(v, True, True, 0)
+            listbox.pack_start(card, False, False, 0)
+        listbox.show_all()
+
+    def load(fn):
+        try:
+            profiles = parse_export(fn)
+        except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as e:
+            status.set_text(f"That file couldn't be read as a Razer Synapse export ({e}). Synapse 2 exports "
+                            "(.RazerSynapse) work; Synapse 3/4 cloud profiles can't be exported in a readable form.")
+            return
+        status.set_text(f"{len(profiles)} profile(s) for {profiles[0]['device']}. Previews show how each looks.")
+        show(profiles)
+
+    def choose(*_):
+        d = Gtk.FileChooserDialog(title="Open a Razer Synapse export", transient_for=win,
+                                  action=Gtk.FileChooserAction.OPEN)
+        d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Open", Gtk.ResponseType.OK)
+        flt = Gtk.FileFilter()
+        flt.set_name("Razer Synapse exports")
+        for pat in ("*.RazerSynapse", "*.razersynapse", "*.zip"):
+            flt.add_pattern(pat)
+        d.add_filter(flt)
+        if d.run() == Gtk.ResponseType.OK:
+            load(d.get_filename())
+        d.destroy()
+
+    openb.connect("clicked", choose)
+    already = list(saved().values())
+    if path:
+        load(path)
+    elif already:
+        status.set_text("Your imported profiles:")
+        show(sorted(already, key=lambda p: p["name"]))
+    else:
+        status.set_text("Open a Synapse export to start. In Synapse 2 on Windows: Profiles > Export.")
+    win.show_all()
+    Gtk.main()
+
+
+def main():
+    a = sys.argv[1:]
+    try:
+        if a and a[0] in ("-h", "--help"):
+            print(__doc__)
+        elif a and a[0] == "list" and len(a) > 1:
+            for p in parse_export(a[1]):
+                print(f"{p['name']}: {p['device']} - {describe(p)}")
+        elif a and a[0] == "apply" and len(a) > 1:
+            p = saved(a[1])
+            if not p:
+                sys.exit(f"No imported profile called {a[1]}")
+            apply(p)
+        elif a and a[0] == "run":
+            name = open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else ""
+            p = saved(name)
+            if p:
+                for _ in range(10):  # the Razer service may still be starting at sign-in
+                    try:
+                        apply(p)
+                        break
+                    except RuntimeError:
+                        time.sleep(3)
+        else:
+            gui(a[0] if a else None)
+    except RuntimeError as e:
+        sys.exit(str(e))
+
+
+if __name__ == "__main__":
+    main()
