@@ -145,7 +145,16 @@ def nvidia_for_running_kernel():
     sh(["update-initramfs", "-u", "-k", release])
     with open("/var/run/reboot-required", "w") as f:
         f.write("*** System restart required ***\n")
+    flatpak_gl()
     print("NVIDIA driver ready - restart the PC to use the graphics card.", flush=True)
+
+
+def flatpak_gl():
+    """Flatpak apps (Steam, Discord, OBS...) need NVIDIA's matching graphics add-on, or they crash or can't use the
+    card. Flatpak picks the right one for the installed driver when it updates."""
+    if os.path.exists("/usr/bin/flatpak"):
+        print("Getting the NVIDIA add-on for Flatpak apps (Steam)...", flush=True)
+        subprocess.run(["flatpak", "update", "--system", "-y", "--noninteractive"], env=ENV)
 
 
 # Drives Stoa can open at start-up: (filesystem type to mount with, options). @UID@/@GID@ = the person asking.
@@ -411,6 +420,8 @@ def main():
         sh(APT + ["install", "podman", "uidmap", "slirp4netns"])
         subprocess.run(["groupadd", "-f", "kvm"], env=ENV)
         sh(["usermod", "-aG", "kvm", name])
+    elif op == "flatpak-gl":
+        flatpak_gl()
     elif op == "serial-access":  # 3D printers, Arduino and other USB serial devices for the person asking
         uid = int(os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or -1)
         name = pwd.getpwuid(uid).pw_name if uid >= 1000 else sys.exit("no user")

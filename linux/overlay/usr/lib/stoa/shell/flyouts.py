@@ -44,8 +44,7 @@ class QuickSettings(Popup):
         page.set_border_width(18)
         grid = Gtk.Grid(column_spacing=10, row_spacing=10, column_homogeneous=True)
         # The Wi-Fi button opens the list of nearby networks (with an on/off switch at the top).
-        self.t_wifi = self._tile("network-wireless-symbolic", "Wi-Fi", lambda *_: self._show_wifi(),
-                                 more=self._show_wifi)
+        self.t_wifi = self._tile("network-wireless-symbolic", "Wi-Fi", lambda *_: self._show_wifi())
         self.t_bt = self._tile("bluetooth-active-symbolic", "Bluetooth", self._toggle_bt)
         self.t_air = self._tile("airplane-mode-symbolic", "Airplane mode", self._toggle_air)
         grid.attach(self.t_wifi, 0, 0, 1, 1)

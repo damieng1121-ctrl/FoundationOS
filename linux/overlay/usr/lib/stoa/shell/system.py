@@ -21,11 +21,13 @@ def network():
         parts = line.split(":")
         if len(parts) >= 3 and parts[1] == "connected":
             if parts[0] == "wifi":
-                sig = 0
-                for l in _run("nmcli", "-t", "-f", "ACTIVE,SIGNAL", "device", "wifi").splitlines():
+                # Show the network's own name (SSID), not the connection profile's ("Wi-Fi connection 1").
+                sig, ssid = 0, ""
+                for l in _run("nmcli", "-t", "-f", "ACTIVE,SIGNAL,SSID", "device", "wifi").splitlines():
                     if l.startswith("yes:"):
-                        sig = int(l.split(":")[1] or 0)
-                return "wifi", parts[2], sig
+                        _a, s, name = l.split(":", 2)
+                        sig, ssid = int(s or 0), name.replace("\\:", ":")
+                return "wifi", ssid or parts[2], sig
             if parts[0] == "ethernet":
                 return "ethernet", parts[2], 100
     return "none", "", 0

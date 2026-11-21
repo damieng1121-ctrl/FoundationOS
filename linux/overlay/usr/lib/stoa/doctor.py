@@ -189,6 +189,27 @@ def check_graphics():
                  open(flag).read() + "\n" + "\n".join(l for l in lspci.splitlines() if "VGA" in l or "3D" in l))
 
 
+def check_flatpak_gl():
+    """NVIDIA driver loaded but Flatpak apps lack its matching add-on: Steam crashes or can't use the card."""
+    ver = ""
+    try:
+        ver = open("/sys/module/nvidia/version").read().strip()
+    except OSError:
+        return None
+    if not ver or not shutil.which("flatpak"):
+        return None
+    apps = _run("flatpak", "list", "--app", "--columns=application")[1]
+    if not apps.strip():
+        return None
+    want = "org.freedesktop.Platform.GL.nvidia-" + ver.replace(".", "-")
+    runtimes = _run("flatpak", "list", "--runtime", "--columns=application")[1]
+    if want in runtimes:
+        return None
+    return Issue("flatpak-gl", "Steam and other apps can't use the NVIDIA card yet",
+                 f"Apps from Flathub (Steam, Discord, OBS) need the add-on that matches your NVIDIA driver "
+                 f"({ver}). Without it they can crash or run slowly.", "problem", "Get the add-on")
+
+
 def check_restart():
     if os.path.exists("/var/run/reboot-required"):
         return Issue("restart", "Restart to finish a security update",
@@ -208,9 +229,9 @@ def check_crashes():
                  "warning", None, "Crash reports: " + ", ".join(os.path.basename(f) for f in recent[:5]))
 
 
-CHECKS = [check_graphics, check_restart, check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
+CHECKS = [check_flatpak_gl, check_graphics, check_restart, check_disk, check_packages, check_services, check_internet, check_audio, check_memory,
           check_temperature, check_virus_signatures, check_crashes]
-NAMES = {"check_graphics": "Graphics", "check_restart": "Security updates", "check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
+NAMES = {"check_flatpak_gl": "Graphics for apps", "check_graphics": "Graphics", "check_restart": "Security updates", "check_disk": "Storage space", "check_packages": "Software updates", "check_services": "System services",
          "check_internet": "Internet", "check_audio": "Sound", "check_memory": "Memory",
          "check_temperature": "Temperature", "check_virus_signatures": "Virus protection",
          "check_crashes": "App crashes"}
@@ -281,6 +302,9 @@ def fix(issue_id):
     if issue_id == "memory":
         subprocess.Popen(["stoa-taskmgr"], start_new_session=True)
         return True, "Task Manager is open, sorted by what's using the most."
+    if issue_id == "flatpak-gl":
+        ok, msg = _root("flatpak-gl")
+        return ok, "Done - restart Steam (or the PC)." if ok else f"That didn't work: {msg}"
     if issue_id == "graphics":
         ok, msg = _root("drivers")
         if ok:
